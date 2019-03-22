@@ -32,7 +32,9 @@ func init() {
 }
 
 // Register ID, download BlockChain, start HeartBeat
-func Start(w http.ResponseWriter, r *http.Request) {}
+func Start(w http.ResponseWriter, r *http.Request) {
+
+}
 
 // Display peerList and sbc
 func Show(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +42,11 @@ func Show(w http.ResponseWriter, r *http.Request) {
 }
 
 // Register to TA's server, get an ID
-func Register() {}
+func Register() {
+	resp, _ := http.Get("http://localhost:6688/peer")
+	print(resp)
+
+}
 
 // Download blockchain from TA server
 func Download() {}

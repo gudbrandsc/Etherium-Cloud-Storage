@@ -10,36 +10,37 @@ import (
 )
 
 type PeerList struct {
-	selfId int32
-	peerMap map[string]int32
+	selfId    int32
+	peerMap   map[string]int32
 	maxLength int32
-	mux sync.Mutex
+	mux       sync.Mutex
 }
 
-func NewPeerList(id int32, maxLength int32) PeerList {}
+func NewPeerList(id int32, maxLength int32) PeerList {
+}
 
-func(peers *PeerList) Add(addr string, id int32) {}
+func (peers *PeerList) Add(addr string, id int32) {}
 
-func(peers *PeerList) Delete(addr string) {}
+func (peers *PeerList) Delete(addr string) {}
 
-func(peers *PeerList) Rebalance() {}
+func (peers *PeerList) Rebalance() {}
 
-func(peers *PeerList) Show() string {}
+func (peers *PeerList) Show() string {}
 
-func(peers *PeerList) Register(id int32) {
+func (peers *PeerList) Register(id int32) {
 	peers.selfId = id
 	fmt.Printf("SelfId=%v\n", id)
 }
 
-func(peers *PeerList) Copy() map[string]int32 {}
+func (peers *PeerList) Copy() map[string]int32 {}
 
-func(peers *PeerList) GetSelfId() int32 {
+func (peers *PeerList) GetSelfId() int32 {
 	return peers.selfId
 }
 
-func(peers *PeerList) PeerMapToJson() (string, error) {}
+func (peers *PeerList) PeerMapToJson() (string, error) {}
 
-func(peers *PeerList) InjectPeerMapJson(peerMapJsonStr string, selfAddr string) {}
+func (peers *PeerList) InjectPeerMapJson(peerMapJsonStr string, selfAddr string) {}
 
 func TestPeerListRebalance() {
 	peers := NewPeerList(5, 4)
