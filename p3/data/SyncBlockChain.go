@@ -12,18 +12,20 @@ type SyncBlockChain struct {
 }
 
 func NewBlockChain() SyncBlockChain {
-	return SyncBlockChain{bc: p2.NewBlockChain()}
+	return SyncBlockChain{bc: p2.NewBlockChain(), mux: sync.Mutex{}}
 }
 
-func (sbc *SyncBlockChain) Gett(height int32) ([]p2.Block, bool) {
+func (sbc *SyncBlockChain) Get(height int32) ([]p2.Block, bool) {
 	sbc.mux.Lock()
 	defer sbc.mux.Unlock()
 	return sbc.bc.Get(height)
 }
 
 func (sbc *SyncBlockChain) GetBlock(height int32, hash string) (p2.Block, bool) {
-	fork, check := sbc.bc.Get(height)
+	sbc.mux.Lock()
+	defer sbc.mux.Unlock()
 
+	fork, check := sbc.bc.Get(height)
 	if check {
 		for _, element := range fork {
 			if element.Header.Hash == hash {
@@ -41,6 +43,8 @@ func (sbc *SyncBlockChain) Insert(block p2.Block) {
 }
 
 func (sbc *SyncBlockChain) CheckParentHash(insertBlock p2.Block) bool {
+	sbc.mux.Lock()
+	defer sbc.mux.Unlock()
 	fork, check := sbc.bc.Get(insertBlock.Header.Height - 1)
 	if check {
 		for _, element := range fork {

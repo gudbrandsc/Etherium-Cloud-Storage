@@ -1,6 +1,8 @@
 package data
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type RegisterData struct {
 	AssignedId  int32  `json:"assignedId"`
@@ -8,9 +10,10 @@ type RegisterData struct {
 }
 
 func NewRegisterData(id int32, peerMapJson string) RegisterData {
-
-	//http://localhost:6688/peer --> Get node ID
-	//ssh -L 6688:mc07.cs.usfca.edu:6688 gschistad@stargate.cs.usfca.edu --> Tunnel
+	return RegisterData{id, peerMapJson}
 }
 
-func (data *RegisterData) EncodeToJson() (string, error) {}
+func (data *RegisterData) EncodeToJson() (string, error) {
+	jsonString, err := json.Marshal(data)
+	return string(jsonString), err
+}

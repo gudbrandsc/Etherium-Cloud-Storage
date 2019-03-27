@@ -26,6 +26,12 @@ type MerklePatriciaTrie struct {
 	EntryMap map[string]string
 }
 
+func NewMPT() MerklePatriciaTrie {
+	mpt := MerklePatriciaTrie{}
+	mpt.Initial()
+	return mpt
+}
+
 func (mpt *MerklePatriciaTrie) Get(key string) (string, error) {
 	return mpt.get_node(mpt.Root, str_to_u8(key))
 }

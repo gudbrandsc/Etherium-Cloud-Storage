@@ -67,6 +67,7 @@ func (b *BlockChain) Insert(block Block) {
 	//Check if block is stored in array if to insert it.
 	if !(hashInArray(block.Header.Hash, b.Chain[block.Header.Height])) {
 		b.Chain[block.Header.Height] = append(b.Chain[block.Header.Height], block)
+		b.Length++
 	}
 }
 
