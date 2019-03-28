@@ -29,9 +29,7 @@ func NewPeerList(id int32, maxLength int32) PeerList {
 
 func (peers *PeerList) Add(addr string, id int32) {
 	peers.mux.Lock()
-	if _, ok := peers.peerMap[addr]; !ok {
-		peers.peerMap[addr] = id
-	}
+	peers.peerMap[addr] = id
 	peers.mux.Unlock()
 }
 
@@ -151,9 +149,10 @@ func (peers *PeerList) InjectPeerMapJson(peerMapJsonStr string, selfAddr string)
 		fmt.Println(err)
 	}
 
-	peers.peerMap = m
-	if _, ok := peers.peerMap[selfAddr]; ok {
-		delete(peers.peerMap, selfAddr)
+	for k, v := range m {
+		if k != selfAddr {
+			peers.peerMap[k] = v
+		}
 	}
 
 	peers.mux.Unlock()

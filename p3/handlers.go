@@ -1,11 +1,13 @@
 package p3
 
 import (
+	"../p2"
 	"./data"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,8 +18,8 @@ import (
 var TA_SERVER = "http://localhost:6688"
 var REGISTER_SERVER = TA_SERVER + "/peer"
 var BC_DOWNLOAD_SERVER = TA_SERVER + "/upload"
-var SELF_ADDR = "http://localhost:"
-var SELF_PORT = os.Args[1]
+var SELF_ADDR = "http://localhost:" + os.Args[1]
+var FIRST_NODE_ADDR = "http://localhost:6686"
 var JSON_BLOCKCHAIN = "[{\"hash\": \"3ff3b4efe9177f705550231079c2459ba54a22d340a517e84ec5261a0d74ca48\", \"timeStamp\": 1234567890, \"height\": 1, \"parentHash\": \"genesis\", \"size\": 1174, \"mpt\": {\"hello\": \"world\", \"charles\": \"ge\"}}, {\"hash\": \"24cf2c336f02ccd526a03683b522bfca8c3c19aed8a1bed1bbc23c33cd8d1159\", \"timeStamp\": 1234567890, \"height\": 2, \"parentHash\": \"3ff3b4efe9177f705550231079c2459ba54a22d340a517e84ec5261a0d74ca48\", \"size\": 1231, \"mpt\": {\"hello\": \"world\", \"charles\": \"ge\"}}]"
 
 var SBC data.SyncBlockChain
@@ -27,21 +29,23 @@ var ifStarted bool
 func init() {
 	SBC = data.NewBlockChain()
 	Peers = data.NewPeerList( /*Register()*/ 5, 32)
-	//data.TestPeerListRebalance()
-	//ifStarted = true
-
+	ifStarted = false
 }
 
 // Register ID, download BlockChain, start HeartBeat
 func Start(w http.ResponseWriter, r *http.Request) {
-	//Download()
-	StartHeartBeat()
 	if os.Args[2] == "yes" {
-		print("Create blockchain with betty")
+		fmt.Println("Create blockchain from json ")
 		SBC.UpdateEntireBlockChain(JSON_BLOCKCHAIN)
 	} else {
+		fmt.Println("Download blockchain from first node..")
 		Download()
 	}
+
+	ifStarted = true
+	StartHeartBeat()
+	w.WriteHeader(http.StatusOK)
+
 }
 
 // Display peerList and sbc
@@ -70,7 +74,19 @@ func Register() int32 {
 
 // Download blockchain from TA server
 func Download() {
+	response, err := http.Get(FIRST_NODE_ADDR + "/upload")
+	if err != nil {
+		fmt.Println("Cant reach TA server")
+		os.Exit(1)
+	}
+	defer response.Body.Close()
 
+	responseData, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	responseString := string(responseData)
+	SBC.UpdateEntireBlockChain(responseString)
 }
 
 // Upload blockchain to whoever called this method, return jsonStr
@@ -114,50 +130,100 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	println(string(body))
 
-	ip := r.RemoteAddr
+	rData := data.HeartBeatData{}
+	err = json.Unmarshal(body, &rData)
+	if rData.Addr != SELF_ADDR {
+		Peers.Add(rData.Addr, rData.Id)
+	}
 
-	fmt.Print("Got heartbeat from : " + ip + " port: " + "\n")
+	Peers.InjectPeerMapJson(rData.PeerMapJson, SELF_ADDR)
+	if rData.IfNewBlock {
+		newBlock := p2.DecodeFromJson(rData.BlockJson)
+		if !SBC.CheckParentHash(newBlock) {
+			AskForBlock(newBlock.Header.Height-1, newBlock.Header.ParentHash)
+		}
+		SBC.Insert(p2.DecodeFromJson(rData.BlockJson))
+	}
+
+	if rData.Hops > 0 {
+		hops := rData.Hops - 1
+		forwardData := data.HeartBeatData{rData.IfNewBlock, rData.Id, rData.BlockJson, rData.PeerMapJson, hops, rData.Addr}
+		ForwardHeartBeat(forwardData)
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // Ask another server to return a block of certain height and hash
 func AskForBlock(height int32, hash string) {
+	Peers.Rebalance()
 
+	for key, _ := range Peers.Copy() {
+		url := key + "/block/" + string(height) + "/" + hash
+		response, err := http.Get(url)
+		if err != nil {
+			fmt.Println("Can't ask for block error...")
+			os.Exit(1)
+		}
+
+		if response.StatusCode == 200 {
+			fmt.Println("Received missing parent block with height: " + string(height))
+			responseData, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			responseString := string(responseData)
+			receivedBlock := p2.DecodeFromJson(responseString)
+			SBC.Insert(receivedBlock)
+			break
+		}
+	}
 }
 
 func ForwardHeartBeat(heartBeatData data.HeartBeatData) {
-	//Call from heartbeat received, if hops > 0 then forward to all nodes in peerslist
+	Peers.Rebalance()
+	for key, _ := range Peers.Copy() {
+		url := key + "/heartbeat/receive"
+		jsonString, _ := json.Marshal(heartBeatData)
+		_, err := http.Post(url, "application/json", bytes.NewBuffer(jsonString))
+		if err != nil {
+			fmt.Print("Unable to forward heartbeat")
+		}
+	}
 }
 
 func sendInitHeartBeat() {
-	if os.Args[1] != "6686" {
-		url := "http://localhost:6686/heartbeat/receive"
-		var jsonStr = []byte(`{"title":"Buy cheese and bread for breakfast."}`)
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonStr))
-		if err == nil {
-			print("Unable to send init heartbeat")
+	if SELF_ADDR != FIRST_NODE_ADDR {
+		url := FIRST_NODE_ADDR + "/heartbeat/receive"
+		peerMapJson, _ := Peers.PeerMapToJson()
+		jsonStr := data.HeartBeatData{false, Peers.GetSelfId(), "", peerMapJson, 0, SELF_ADDR}
+		jsonString, _ := json.Marshal(jsonStr)
+		_, err := http.Post(url, "application/json", bytes.NewBuffer(jsonString))
+		if err != nil {
+			fmt.Print("Error sending init message")
 		}
-		print(resp)
 	}
 }
 
 func StartHeartBeat() {
-	peerMapJson, _ := Peers.PeerMapToJson()
-	data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), peerMapJson, SELF_ADDR, SELF_PORT)
+	sendInitHeartBeat()
+	duration := time.Duration(10) * time.Second // Pause for 10 seconds
 	running := true
 	for running {
-		duration := time.Duration(10) * time.Second // Pause for 10 seconds
 		time.Sleep(duration)
+		fmt.Println("Sending heartbeat")
+		Peers.Rebalance()
+		peerMapJson, _ := Peers.PeerMapToJson()
+		jsonStr := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), peerMapJson, SELF_ADDR, false)
+		jsonString, _ := json.Marshal(jsonStr)
+
 		for key, _ := range Peers.Copy() {
-			peerMapJson, _ := Peers.PeerMapToJson()
-			jsonStr := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), peerMapJson, SELF_ADDR, SELF_PORT)
-			jsonString, _ := json.Marshal(jsonStr)
-			req, _ := http.NewRequest("POST", SELF_ADDR+key, bytes.NewBuffer(jsonString))
-
-			req.Header.Set("X-Custom-Header", "myvalue")
-			req.Header.Set("Content-Type", "application/json")
+			url := key + "/heartbeat/receive"
+			_, err := http.Post(url, "application/json", bytes.NewBuffer(jsonString))
+			if err != nil {
+				fmt.Print("Error sending init message")
+			}
 		}
-
 	}
 }
