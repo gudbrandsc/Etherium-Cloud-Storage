@@ -17,6 +17,7 @@ type PeerList struct {
 	mux       sync.Mutex
 }
 
+//Create a new PeerList structure
 func NewPeerList(id int32, maxLength int32) PeerList {
 	peerlist := PeerList{}
 	peerlist.Register(id)
@@ -27,18 +28,22 @@ func NewPeerList(id int32, maxLength int32) PeerList {
 	return peerlist
 }
 
+//Add a peer to the list
 func (peers *PeerList) Add(addr string, id int32) {
 	peers.mux.Lock()
 	peers.peerMap[addr] = id
 	peers.mux.Unlock()
 }
 
+//Remove a peer from the PeerList
 func (peers *PeerList) Delete(addr string) {
 	peers.mux.Lock()
 	delete(peers.peerMap, addr)
 	peers.mux.Unlock()
 }
 
+// Function that selects the Peers that has a Id closet to the current node
+// The peerlist will never be lager than the max length
 func (peers *PeerList) Rebalance() {
 	peers.mux.Lock()
 	if len(peers.peerMap) > int(peers.maxLength) {
@@ -100,6 +105,7 @@ func (peers *PeerList) Rebalance() {
 	peers.mux.Unlock()
 }
 
+// Returns a string representation of the peers
 func (peers *PeerList) Show() string {
 	peers.mux.Lock()
 	defer peers.mux.Unlock()
@@ -110,6 +116,7 @@ func (peers *PeerList) Show() string {
 	return rs
 }
 
+// Set the Id of the current struct
 func (peers *PeerList) Register(id int32) {
 	peers.mux.Lock()
 	peers.selfId = id
@@ -118,26 +125,30 @@ func (peers *PeerList) Register(id int32) {
 
 }
 
+// Return a copy of the current PeerList
 func (peers *PeerList) Copy() map[string]int32 {
 	peers.mux.Lock()
 	defer peers.mux.Unlock()
 	return peers.peerMap
 }
 
+// Get your own Id
 func (peers *PeerList) GetSelfId() int32 {
 	peers.mux.Lock()
 	defer peers.mux.Unlock()
 	return peers.selfId
 }
 
+// Convert the PeerList into a json string
 func (peers *PeerList) PeerMapToJson() (string, error) {
 	peers.mux.Lock()
 	jsonString, error := json.Marshal(peers.peerMap)
 	defer peers.mux.Unlock()
 	return string(jsonString), error
-
 }
 
+// Converts a json string of a PeerList into a list, and adds all the peers
+// except itself
 func (peers *PeerList) InjectPeerMapJson(peerMapJsonStr string, selfAddr string) {
 	peers.mux.Lock()
 
@@ -154,7 +165,6 @@ func (peers *PeerList) InjectPeerMapJson(peerMapJsonStr string, selfAddr string)
 			peers.peerMap[k] = v
 		}
 	}
-
 	peers.mux.Unlock()
 }
 

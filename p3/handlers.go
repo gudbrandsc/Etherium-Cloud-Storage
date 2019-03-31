@@ -26,26 +26,27 @@ var SBC data.SyncBlockChain
 var Peers data.PeerList
 var ifStarted bool
 
+//Initialize all variables for the server
 func init() {
 	SBC = data.NewBlockChain()
-	Peers = data.NewPeerList( /*Register()*/ 5, 32)
+	id, _ := strconv.ParseInt(os.Args[1], 10, 32)
+	Peers = data.NewPeerList( /*Register()*/ int32(id), 32) // Uses port number as ID since TA server is down
 	ifStarted = false
 }
 
 // Register ID, download BlockChain, start HeartBeat
 func Start(w http.ResponseWriter, r *http.Request) {
+	// The first Node will read two blocks from a Json string and add it to the BlockChain
 	if os.Args[2] == "yes" {
-		fmt.Println("Create blockchain from json ")
+		fmt.Println("Create BlockChain from json ")
 		SBC.UpdateEntireBlockChain(JSON_BLOCKCHAIN)
 	} else {
-		fmt.Println("Download blockchain from first node..")
+		fmt.Println("Download BlockChain from first node..")
 		Download()
 	}
-
 	ifStarted = true
-	StartHeartBeat()
-	w.WriteHeader(http.StatusOK)
-
+	go StartHeartBeat()
+	fmt.Fprintf(w, "Node started")
 }
 
 // Display peerList and sbc
@@ -53,7 +54,7 @@ func Show(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s\n%s", Peers.Show(), SBC.Show())
 }
 
-// Register to TA's server, get an ID
+// Register to TA's server with get request and return the userId
 func Register() int32 {
 	response, err := http.Get(REGISTER_SERVER)
 	if err != nil {
@@ -72,7 +73,7 @@ func Register() int32 {
 	return int32(val)
 }
 
-// Download blockchain from TA server
+// Download BlockChain from TA server
 func Download() {
 	response, err := http.Get(FIRST_NODE_ADDR + "/upload")
 	if err != nil {
@@ -89,7 +90,7 @@ func Download() {
 	SBC.UpdateEntireBlockChain(responseString)
 }
 
-// Upload blockchain to whoever called this method, return jsonStr
+// Upload BlockChain to whoever called this method, return jsonStr
 func Upload(w http.ResponseWriter, r *http.Request) {
 	blockChainJson, err := SBC.BlockChainToJson()
 	if err != nil {
@@ -100,15 +101,16 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 }
 
 // Upload a block to whoever called this method, return jsonStr
+// HTTP status 500 if there is an error
+// HTTP status 204 if block does not exist
+// Else return json string of block
 func UploadBlock(w http.ResponseWriter, r *http.Request) {
 	//Read from request get height and hash
 	s := strings.Split(r.URL.Path, "/")
-
 	val, err := strconv.ParseInt(s[2], 10, 32)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-
 	}
 
 	height := int32(val)
@@ -133,19 +135,21 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 
 	rData := data.HeartBeatData{}
 	err = json.Unmarshal(body, &rData)
+	// Check that its not a forwarded heartbeat from yourself, and add sender to PeerList
 	if rData.Addr != SELF_ADDR {
 		Peers.Add(rData.Addr, rData.Id)
 	}
-
+	// Add all the peers from senders PeerList
 	Peers.InjectPeerMapJson(rData.PeerMapJson, SELF_ADDR)
-	if rData.IfNewBlock {
+	if rData.IfNewBlock { // If HeartBeat contatins a new Block
 		newBlock := p2.DecodeFromJson(rData.BlockJson)
-		if !SBC.CheckParentHash(newBlock) {
+		if !SBC.CheckParentHash(newBlock) { // Check if you have the parent block if not ask for it from a peer
 			AskForBlock(newBlock.Header.Height-1, newBlock.Header.ParentHash)
 		}
+		// Add new block to the chain
 		SBC.Insert(p2.DecodeFromJson(rData.BlockJson))
 	}
-
+	// Check if heartbeat should be forwarded
 	if rData.Hops > 0 {
 		hops := rData.Hops - 1
 		forwardData := data.HeartBeatData{rData.IfNewBlock, rData.Id, rData.BlockJson, rData.PeerMapJson, hops, rData.Addr}
@@ -163,7 +167,6 @@ func AskForBlock(height int32, hash string) {
 		response, err := http.Get(url)
 		if err != nil {
 			fmt.Println("Can't ask for block error...")
-			os.Exit(1)
 		}
 
 		if response.StatusCode == 200 {
@@ -171,16 +174,17 @@ func AskForBlock(height int32, hash string) {
 			responseData, err := ioutil.ReadAll(response.Body)
 			if err != nil {
 				log.Fatal(err)
+			} else {
+				responseString := string(responseData)
+				receivedBlock := p2.DecodeFromJson(responseString)
+				SBC.Insert(receivedBlock)
+				break
 			}
-
-			responseString := string(responseData)
-			receivedBlock := p2.DecodeFromJson(responseString)
-			SBC.Insert(receivedBlock)
-			break
 		}
 	}
 }
 
+// Forward a heartbeat to all your peers.
 func ForwardHeartBeat(heartBeatData data.HeartBeatData) {
 	Peers.Rebalance()
 	for key, _ := range Peers.Copy() {
@@ -193,6 +197,7 @@ func ForwardHeartBeat(heartBeatData data.HeartBeatData) {
 	}
 }
 
+// Send a heartbeat to the first node, to be added to its PeerList
 func sendInitHeartBeat() {
 	if SELF_ADDR != FIRST_NODE_ADDR {
 		url := FIRST_NODE_ADDR + "/heartbeat/receive"
@@ -206,6 +211,7 @@ func sendInitHeartBeat() {
 	}
 }
 
+// Send a heartbeat to every peer node every 10 second
 func StartHeartBeat() {
 	sendInitHeartBeat()
 	duration := time.Duration(10) * time.Second // Pause for 10 seconds

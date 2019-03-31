@@ -21,72 +21,79 @@ func NewBlockChain() BlockChain {
 }
 
 // Initialise a new BlockChain
-func (b *BlockChain) Initial() {
+func (bc *BlockChain) Initial() {
 	//Set values from param
-	b.Length = 0
-	b.Chain = make(map[int32][]Block)
+	bc.Length = 0
+	bc.Chain = make(map[int32][]Block)
 
 }
 
-func (bc *BlockChain) Show() string {
-	rs := ""
-	var idList []int
-	for id := range bc.Chain {
-		idList = append(idList, int(id))
+//Get list of block at a height in the chain
+func (bc *BlockChain) Get(height int32) ([]Block, bool) {
+	getList, ok := bc.Chain[height]
+	if ok {
+		return getList, true
 	}
-	sort.Ints(idList)
-	for _, id := range idList {
-		var hashs []string
-		for _, block := range bc.Chain[int32(id)] {
-			hashs = append(hashs, block.Header.Hash+"<="+block.Header.ParentHash)
+	return nil, false
+}
+
+// Get a specific block in the chain, if the block does not exist then return empty block
+func (bc *BlockChain) GetBlock(height int32, hash string) (Block, bool) {
+	getList, ok := bc.Chain[height]
+	if ok {
+		for _, block := range getList {
+			if block.GetHash() == hash {
+				return block, true
+			}
 		}
-		sort.Strings(hashs)
-		rs += fmt.Sprintf("%v: ", id)
-		for _, h := range hashs {
-			rs += fmt.Sprintf("%s, ", h)
+	}
+	return Block{}, false
+}
+
+// Insert a new block to the chain
+func (bc *BlockChain) Insert(blc Block) {
+
+	newBlockHeight := blc.GetHeight()
+	blockList, _ := bc.Get(newBlockHeight)
+	if len(blockList) == 0 {
+		blockList = []Block{blc}
+		if newBlockHeight > bc.Length {
+			bc.Length = newBlockHeight
 		}
-		rs += "\n"
-	}
-	sum := sha3.Sum256([]byte(rs))
-	rs = fmt.Sprintf("This is the BlockChain: %s\n", hex.EncodeToString(sum[:])) + rs
-	return rs
-}
+	} else {
+		//Check if the block is already in the chain
+		exist := hashInArray(blc.GetHash(), blockList)
 
-//TODO fix this
-func (b *BlockChain) Get(height int32) ([]Block, bool) {
-	b.Chain[height] = append(b.Chain[height], *new(Block))
-	result := b.Chain[height]
-	if len(result) == 0 {
-		return nil, false
+		if !exist {
+			// If block does not exist it is added to the chain
+			blockList = append(blockList, blc)
+		}
 	}
-	return result, true
-}
 
-// Insert a block into the BlockChain
-func (b *BlockChain) Insert(block Block) {
-	//Check if block is stored in array if to insert it.
-	if !(hashInArray(block.Header.Hash, b.Chain[block.Header.Height])) {
-		b.Chain[block.Header.Height] = append(b.Chain[block.Header.Height], block)
-		b.Length++
+	bc.Chain[newBlockHeight] = blockList
+
+	// Update chain height if the current block height is greater than current chain height
+	if bc.Length < blc.GetHeight() {
+		bc.Length = blc.GetHeight()
 	}
 }
 
 //Check if the hash value of the block is already stored in the array.
 func hashInArray(blockHash string, list []Block) bool {
-	for _, b := range list {
-		if b.Header.Hash == blockHash {
+	for _, block := range list {
+		if block.GetHash() == blockHash {
 			return true
 		}
 	}
 	return false
 }
 
-// Function that encodes a BlockChain into a json array string
-func (b *BlockChain) EncodeToJSON() (string, error) {
+// Convert the BlockChain to a JSON string
+func (bc *BlockChain) EncodeToJSON() (string, error) {
 	encodedBlockChain := "["
 
-	// Iterate each index in the hashmap.
-	for _, v := range b.Chain {
+	// Iterate each index in the HashMap.
+	for _, v := range bc.Chain {
 		// For each index, iterate array of blocks.
 		for _, element := range v {
 			encodedBlockChain += element.EncodeToJSON() + ","
@@ -96,11 +103,10 @@ func (b *BlockChain) EncodeToJSON() (string, error) {
 	encodedBlockChain += "]"
 
 	return encodedBlockChain, nil
-
 }
 
-//Function that takes a json array string of blocks and creates a BlockChain containing every block
-func DecodeJsonToBlockChain(data string) (BlockChain, error) {
+//Function that takes a json array string of blocks and creates a BlockChain containing every block DecodeJsonToBlockChain
+func DecodeJsonToBlockChain(data string) BlockChain {
 	//Create new a Blockchain
 	blockChain := new(BlockChain)
 	blockChain.Initial()
@@ -120,5 +126,30 @@ func DecodeJsonToBlockChain(data string) (BlockChain, error) {
 		}
 		blockChain.Insert(DecodeFromJson(string(val)))
 	}
-	return *blockChain, err
+	return *blockChain
+}
+
+// Creates a human readable representation of the BlockChain
+func (bc *BlockChain) Show() string {
+	rs := ""
+	var idList []int
+	for id := range bc.Chain {
+		idList = append(idList, int(id))
+	}
+	sort.Ints(idList)
+	for _, id := range idList {
+		var hashs []string
+		for _, block := range bc.Chain[int32(id)] {
+			hashs = append(hashs, block.GetHash()+"<="+block.GetParentHash())
+		}
+		sort.Strings(hashs)
+		rs += fmt.Sprintf("%v: ", id)
+		for _, h := range hashs {
+			rs += fmt.Sprintf("%s, ", h)
+		}
+		rs += "\n"
+	}
+	sum := sha3.Sum256([]byte(rs))
+	rs = fmt.Sprintf("This is the BlockChain: %s\n", hex.EncodeToString(sum[:])) + rs
+	return rs
 }

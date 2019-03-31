@@ -621,3 +621,7 @@ func (mpt *MerklePatriciaTrie) Order_nodes() string {
 func (mpt *MerklePatriciaTrie) GetEntryMap() map[string]string {
 	return mpt.EntryMap
 }
+
+func (mpt *MerklePatriciaTrie) GetRoot() string {
+	return mpt.Root
+}

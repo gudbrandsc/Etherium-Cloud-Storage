@@ -35,10 +35,9 @@ type Encoded_block struct {
 	Value      map[string]string `json:"mpt"`
 }
 
-// Initialise a new Block
-func (b *Block) Initial(height int32, parentHash string, mpt p1.MerklePatriciaTrie) {
-
-	//Set values from param
+// Initial a new block
+func Initial(height int32, parentHash string, mpt p1.MerklePatriciaTrie) Block {
+	b := Block{} //Set values from param
 	header := Header{
 		Height:     height,
 		Timestamp:  time.Now().Unix(),
@@ -56,27 +55,11 @@ func (b *Block) Initial(height int32, parentHash string, mpt p1.MerklePatriciaTr
 	hashStr := string(b.Header.Height) + string(b.Header.Timestamp) + b.Header.ParentHash + b.Value.Root + string(b.Header.Size)
 	sum := sha3.Sum256([]byte(hashStr))
 	b.Header.Hash = hex.EncodeToString(sum[:])
+	return b
 }
 
-func (b *Block) EncodeToJSON() string {
-	//Get Json data from entry map in mpt
-	mptData := b.Value.EntryMap
-
-	//Create json string with block values
-	encodedB := &Encoded_block{
-		Hash:       b.Header.Hash,
-		Timestamp:  b.Header.Timestamp,
-		Height:     b.Header.Height,
-		ParentHash: b.Header.ParentHash,
-		Size:       b.Header.Size,
-		Value:      mptData,
-	}
-	result, _ := json.Marshal(encodedB)
-	return string(result)
-}
-
+// Read a JSON string and convert it into a Block
 func DecodeFromJson(jsonString string) Block {
-
 	var decoded Encoded_block
 	err := json.NewDecoder(strings.NewReader(jsonString)).Decode(&decoded)
 	if err != nil {
@@ -104,4 +87,37 @@ func DecodeFromJson(jsonString string) Block {
 		Value:  *mpt,
 	}
 	return block
+}
+
+// Encode a Block into JSON format
+func (b *Block) EncodeToJSON() string {
+	//Get Json data from entry map in mpt
+	mptData := b.Value.EntryMap
+
+	//Create json string with block values
+	encodedB := &Encoded_block{
+		Hash:       b.Header.Hash,
+		Timestamp:  b.Header.Timestamp,
+		Height:     b.Header.Height,
+		ParentHash: b.Header.ParentHash,
+		Size:       b.Header.Size,
+		Value:      mptData,
+	}
+	result, _ := json.Marshal(encodedB)
+	return string(result)
+}
+
+// Get parent hash of current block
+func (block *Block) GetParentHash() string {
+	return block.Header.ParentHash
+}
+
+// Get hash of current block
+func (block *Block) GetHash() string {
+	return block.Header.Hash
+}
+
+// Get the height of the current block
+func (block *Block) GetHeight() int32 {
+	return block.Header.Height
 }
