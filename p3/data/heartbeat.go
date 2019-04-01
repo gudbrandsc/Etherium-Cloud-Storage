@@ -27,8 +27,7 @@ func PrepareHeartBeatData(sbc *SyncBlockChain, selfId int32, peerMapJSON string,
 
 	//Generate new block at random, if heartbeat message is init then it should not create a new block
 	if randomVal >= 51 && init == false {
-		mpt := p1.MerklePatriciaTrie{}
-		mpt.Initial()
+		mpt := p1.NewMPT()
 		newBlock := sbc.GenBlock(mpt)
 		sbc.Insert(newBlock)
 		newBlockJson = newBlock.EncodeToJSON()

@@ -75,8 +75,7 @@ func DecodeFromJson(jsonString string) Block {
 	}
 
 	mptEntryMap := decoded.Value
-	mpt := new(p1.MerklePatriciaTrie)
-	mpt.Initial()
+	mpt := p1.NewMPT()
 
 	for k, v := range mptEntryMap {
 		mpt.Insert(k, v)
@@ -84,7 +83,7 @@ func DecodeFromJson(jsonString string) Block {
 
 	block := Block{
 		Header: header,
-		Value:  *mpt,
+		Value:  mpt,
 	}
 	return block
 }
