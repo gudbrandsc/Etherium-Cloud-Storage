@@ -1,19 +1,26 @@
 package p3
 
 import (
+	"../p1"
 	"../p2"
 	"./data"
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/sha3"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 )
+
+const charset = "abcdefghijklmnopqrstuvwxyz" +
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 var TA_SERVER = "http://localhost:6688"
 var REGISTER_SERVER = TA_SERVER + "/peer"
@@ -46,6 +53,7 @@ func Start(w http.ResponseWriter, r *http.Request) {
 	}
 	ifStarted = true
 	go StartHeartBeat()
+	go StartTryingNonces()
 	fmt.Fprintf(w, "Node started")
 }
 
@@ -136,32 +144,42 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 	rData := data.HeartBeatData{}
 	err = json.Unmarshal(body, &rData)
 	// Check that its not a forwarded heartbeat from yourself, and add sender to PeerList
-	if rData.Addr != SELF_ADDR {
-		Peers.Add(rData.Addr, rData.Id)
-	}
-	// Add all the peers from senders PeerList
 	Peers.InjectPeerMapJson(rData.PeerMapJson, SELF_ADDR)
-	if rData.IfNewBlock { // If HeartBeat contatins a new Block
-		newBlock := p2.DecodeFromJson(rData.BlockJson)
-		if !SBC.CheckParentHash(newBlock) { // Check if you have the parent block if not ask for it from a peer
-			AskForBlock(newBlock.Header.Height-1, newBlock.Header.ParentHash)
+	if rData.Addr != SELF_ADDR {
+		//TODO does not need to have if around new block but good for print
+		Peers.Add(rData.Addr, rData.Id)
+		// Add all the peers from senders PeerList
+		if rData.IfNewBlock { // If HeartBeat contatins a new Block
+			fmt.Println("Received new block form peer")
+			newBlock := p2.DecodeFromJson(rData.BlockJson)
+			if CheckPowForNewBlock(newBlock) {
+				fmt.Println("POW is correct")
+				if !SBC.CheckParentHash(newBlock) { // Check if you have the parent block if not ask for it from a peer
+					AskForBlock(newBlock.Header.Height-1, newBlock.Header.ParentHash)
+				}
+				// Add new block to the chain
+				SBC.Insert(p2.DecodeFromJson(rData.BlockJson))
+			}
 		}
-		// Add new block to the chain
-		SBC.Insert(p2.DecodeFromJson(rData.BlockJson))
-	}
-	// Check if heartbeat should be forwarded
-	if rData.Hops > 0 {
-		hops := rData.Hops - 1
-		forwardData := data.HeartBeatData{rData.IfNewBlock, rData.Id, rData.BlockJson, rData.PeerMapJson, hops, rData.Addr}
-		ForwardHeartBeat(forwardData)
+		// Check if heartbeat should be forwarded
+		if rData.Hops > 0 {
+			hops := rData.Hops - 1
+			forwardData := data.HeartBeatData{rData.IfNewBlock, rData.Id, rData.BlockJson, rData.PeerMapJson, hops, rData.Addr}
+			ForwardHeartBeat(forwardData)
+		}
 	}
 	w.WriteHeader(http.StatusOK)
+}
+func CheckPowForNewBlock(block p2.Block) bool {
+	hashStr := block.Header.ParentHash + block.Header.Nonce + block.Value.Root
+	sum := sha3.Sum256([]byte(hashStr))
+	powString := hex.EncodeToString(sum[:])
+	return checkPowResult(powString)
 }
 
 // Ask another server to return a block of certain height and hash
 func AskForBlock(height int32, hash string) {
 	Peers.Rebalance()
-
 	for key, _ := range Peers.Copy() {
 		url := key + "/block/" + string(height) + "/" + hash
 		response, err := http.Get(url)
@@ -178,6 +196,11 @@ func AskForBlock(height int32, hash string) {
 				responseString := string(responseData)
 				receivedBlock := p2.DecodeFromJson(responseString)
 				SBC.Insert(receivedBlock)
+
+				//Recursively ask for parent block of received ParentBlock
+				if !SBC.CheckParentHash(receivedBlock) {
+					AskForBlock(receivedBlock.Header.Height-1, receivedBlock.Header.ParentHash)
+				}
 				break
 			}
 		}
@@ -202,7 +225,7 @@ func sendInitHeartBeat() {
 	if SELF_ADDR != FIRST_NODE_ADDR {
 		url := FIRST_NODE_ADDR + "/heartbeat/receive"
 		peerMapJson, _ := Peers.PeerMapToJson()
-		jsonStr := data.HeartBeatData{false, Peers.GetSelfId(), "", peerMapJson, 0, SELF_ADDR}
+		jsonStr := data.PrepareHeartBeatData(Peers.GetSelfId(), peerMapJson, SELF_ADDR)
 		jsonString, _ := json.Marshal(jsonStr)
 		_, err := http.Post(url, "application/json", bytes.NewBuffer(jsonString))
 		if err != nil {
@@ -213,15 +236,14 @@ func sendInitHeartBeat() {
 
 // Send a heartbeat to every peer node every 10 second
 func StartHeartBeat() {
-	sendInitHeartBeat()
 	duration := time.Duration(10) * time.Second // Pause for 10 seconds
-	running := true
-	for running {
+
+	sendInitHeartBeat()
+	for true {
 		time.Sleep(duration)
-		fmt.Println("Sending heartbeat")
 		Peers.Rebalance()
 		peerMapJson, _ := Peers.PeerMapToJson()
-		jsonStr := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), peerMapJson, SELF_ADDR, false)
+		jsonStr := data.PrepareHeartBeatData(Peers.GetSelfId(), peerMapJson, SELF_ADDR)
 		jsonString, _ := json.Marshal(jsonStr)
 
 		for key, _ := range Peers.Copy() {
@@ -232,4 +254,108 @@ func StartHeartBeat() {
 			}
 		}
 	}
+}
+
+func StartTryingNonces() {
+	duration := time.Duration(4) * time.Second // Pause for 10 seconds
+	time.Sleep(duration)
+	fmt.Println("Start nonce")
+	for true {
+		//Get latest block
+		latestBlockList := SBC.GetLatestBlocks()
+		blockListLength := len(latestBlockList) - 1
+		randomVal := 0
+		currentChainLength := SBC.GetChainLength()
+
+		if blockListLength > 0 {
+			randomVal = rand.Intn(int(blockListLength)-0) + 0
+		}
+
+		parentBlock := latestBlockList[randomVal]
+		mpt := GenerateRandomMPT()
+
+		powString := "9999999999"
+		correctNonce := ""
+		ifNewBlock := true
+		fmt.Println("find new block for : " + parentBlock.GetHash())
+
+		for !checkPowResult(powString) {
+			if currentChainLength != SBC.GetChainLength() {
+				ifNewBlock = false
+				break
+			} else {
+				nonce, err := randomHex()
+				if err == nil {
+					hashStr := parentBlock.Header.Hash + nonce + mpt.Root
+					sum := sha3.Sum256([]byte(hashStr))
+					powString = hex.EncodeToString(sum[:])
+					correctNonce = nonce
+				}
+			}
+		}
+
+		if ifNewBlock {
+			fmt.Println("Found pow send to all peers")
+			fmt.Println(powString)
+			newBlock := SBC.GenBlock(mpt, correctNonce, parentBlock.Header.Hash)
+			SBC.Insert(newBlock)
+			newBlockJson := newBlock.EncodeToJSON()
+			Peers.Rebalance() // Make sure to only send the correct amount of peers
+			peerMapJson, _ := Peers.PeerMapToJson()
+			heartBeatData := data.NewHeartBeatData(ifNewBlock, Peers.GetSelfId(), newBlockJson, peerMapJson, SELF_ADDR)
+			ForwardHeartBeat(heartBeatData)
+		} else {
+			fmt.Println("Someone solved pow before me")
+		}
+	}
+}
+
+// Check if the first 7 chars in the POW are 0's
+func checkPowResult(pow string) bool {
+	first7 := pow[0:6]
+	for _, char := range first7 {
+		if char != '0' {
+			return false
+		}
+	}
+	return true
+}
+
+// Generate a random hex string with 16 char
+// src: https://sosedoff.com/2014/12/15/generate-random-hex-string-in-go.html
+func randomHex() (string, error) {
+	bytes := make([]byte, 8)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// Generate a random string of 10 bytes
+// src: https://www.calhoun.io/creating-random-strings-in-go/
+func generateRandomString() string {
+	var seededRand *rand.Rand = rand.New(
+		rand.NewSource(time.Now().UnixNano()))
+	b := make([]byte, 10)
+
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+// Generate a MPT and insert 1-15 random key, value pairs
+func GenerateRandomMPT() p1.MerklePatriciaTrie {
+	insertNumber := rand.Intn(15-1) + 1
+	mpt := p1.NewMPT()
+	for i := 0; i < insertNumber; i++ {
+		key := generateRandomString()
+		value := generateRandomString()
+		mpt.Insert(key, value)
+	}
+	return mpt
+}
+
+func Canonical(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, SBC.ShowCanonical())
 }

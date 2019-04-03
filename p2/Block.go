@@ -23,6 +23,7 @@ type Header struct {
 	Hash       string
 	ParentHash string
 	Size       int32
+	Nonce      string
 }
 
 //Structure used to create a JSON object.
@@ -33,15 +34,17 @@ type Encoded_block struct {
 	ParentHash string            `json:"parentHash"`
 	Size       int32             `json:"size"`
 	Value      map[string]string `json:"mpt"`
+	Nonce      string            `json:"nonce"`
 }
 
 // Initial a new block
-func Initial(height int32, parentHash string, mpt p1.MerklePatriciaTrie) Block {
+func Initial(height int32, parentHash string, mpt p1.MerklePatriciaTrie, nonce string) Block {
 	b := Block{} //Set values from param
 	header := Header{
 		Height:     height,
 		Timestamp:  time.Now().Unix(),
 		ParentHash: parentHash,
+		Nonce:      nonce,
 	}
 	b.Header = header
 	b.Value = mpt
@@ -72,6 +75,7 @@ func DecodeFromJson(jsonString string) Block {
 		ParentHash: decoded.ParentHash,
 		Hash:       decoded.Hash,
 		Size:       decoded.Size,
+		Nonce:      decoded.Nonce,
 	}
 
 	mptEntryMap := decoded.Value
@@ -99,6 +103,7 @@ func (b *Block) EncodeToJSON() string {
 		Timestamp:  b.Header.Timestamp,
 		Height:     b.Header.Height,
 		ParentHash: b.Header.ParentHash,
+		Nonce:      b.Header.Nonce,
 		Size:       b.Header.Size,
 		Value:      mptData,
 	}
@@ -119,4 +124,8 @@ func (block *Block) GetHash() string {
 // Get the height of the current block
 func (block *Block) GetHeight() int32 {
 	return block.Header.Height
+}
+
+func (block *Block) GetNonce() string {
+	return block.Header.Nonce
 }

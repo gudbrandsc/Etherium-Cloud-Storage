@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/sha3"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -152,4 +153,52 @@ func (bc *BlockChain) Show() string {
 	sum := sha3.Sum256([]byte(rs))
 	rs = fmt.Sprintf("This is the BlockChain: %s\n", hex.EncodeToString(sum[:])) + rs
 	return rs
+}
+
+// This function returns the list of blocks of height "BlockChain.length".
+func (bc *BlockChain) GetLatestBlocks() []Block {
+	latestBlocksList, _ := bc.Get(bc.Length)
+	return latestBlocksList
+}
+
+// This function takes a block as the parameter, and returns its parent block.
+func (bc *BlockChain) GetParentBlock(block Block) (Block, bool) {
+	return bc.GetBlock(block.Header.Height-1, block.Header.ParentHash)
+}
+
+func (bc *BlockChain) getLength() int32 {
+	return bc.Length
+
+}
+
+// Gets all blocks at the end of the blockChain(longest chains) and returns human readable string
+func (bc *BlockChain) ShowCanonical() string {
+	bcTop := bc.GetLatestBlocks()
+	count := 1
+	rs := ""
+	for _, block := range bcTop {
+		rs += "Chain #" + strconv.Itoa(count) + "\n"
+		rs += bc.GetChainString(block)
+		rs += "\n\n"
+		count++
+	}
+	return rs
+}
+
+// Recursive function that goes to genesis block
+func (bc *BlockChain) GetChainString(block Block) string {
+	bcString := ""
+	bcString +=
+		"height=" + strconv.Itoa(int(block.Header.Height)) +
+			", timestamp=" + strconv.Itoa(int(block.Header.Timestamp)) +
+			", hash=" + block.Header.Hash +
+			", parenthash=" + block.Header.ParentHash +
+			", size=" + strconv.Itoa((int(block.Header.Size))) + "\n"
+
+	if block.Header.ParentHash != "genesis" {
+		parentBlock, _ := bc.GetBlock(block.Header.Height-1, block.Header.ParentHash)
+		bcString += bc.GetChainString(parentBlock)
+	}
+
+	return bcString
 }

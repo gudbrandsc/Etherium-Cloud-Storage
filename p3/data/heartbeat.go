@@ -1,10 +1,5 @@
 package data
 
-import (
-	"../../p1"
-	"math/rand"
-)
-
 type HeartBeatData struct {
 	IfNewBlock  bool   `json:"ifNewBlock"`
 	Id          int32  `json:"id"`
@@ -20,18 +15,6 @@ func NewHeartBeatData(ifNewBlock bool, id int32, blockJson string, peerMapJson s
 }
 
 //Function that generates the heartbeat data, and randomly creates new block to the blockchain
-func PrepareHeartBeatData(sbc *SyncBlockChain, selfId int32, peerMapJSON string, addr string, init bool) HeartBeatData {
-	randomVal := rand.Intn(100-0) + 0
-	ifNewBlock := false
-	newBlockJson := ""
-
-	//Generate new block at random, if heartbeat message is init then it should not create a new block
-	if randomVal >= 51 && init == false {
-		mpt := p1.NewMPT()
-		newBlock := sbc.GenBlock(mpt)
-		sbc.Insert(newBlock)
-		newBlockJson = newBlock.EncodeToJSON()
-		ifNewBlock = true
-	}
-	return NewHeartBeatData(ifNewBlock, selfId, newBlockJson, peerMapJSON, addr)
+func PrepareHeartBeatData(selfId int32, peerMapJSON string, addr string) HeartBeatData {
+	return NewHeartBeatData(false, selfId, "", peerMapJSON, addr)
 }
