@@ -253,7 +253,6 @@ func (mpt *MerklePatriciaTrie) split_ext(cur_hash string, common_path []uint8, r
 		// EXT-+BRANCH
 		new_ext := Node{Node_type: 2, Flag_value: Flag_value{Encoded_prefix: compact_encode(common_path), Value: new_branch_hash}}
 		new_ext_hash := new_ext.hash_node()
-		//fmt.Printf("Split EXT(%s) to EXT(%s) + BRANCH(%s)", cur_hash, new_ext_hash, new_branch_hash)
 		mpt.DB[new_ext_hash] = new_ext
 		return new_ext_hash
 	}

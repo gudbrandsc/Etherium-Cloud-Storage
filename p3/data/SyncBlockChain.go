@@ -96,6 +96,8 @@ func (sbc *SyncBlockChain) GetParentBlock(block p2.Block) (p2.Block, bool) {
 	return sbc.bc.GetParentBlock(block)
 }
 
+// Get the length of the chain.
+// Method is not sync because POW would require the lock to often.
 func (sbc *SyncBlockChain) GetChainLength() int32 {
 	return sbc.bc.Length
 }
@@ -104,5 +106,4 @@ func (sbc *SyncBlockChain) ShowCanonical() string {
 	sbc.mux.Lock()
 	defer sbc.mux.Unlock()
 	return sbc.bc.ShowCanonical()
-
 }
