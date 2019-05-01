@@ -93,9 +93,8 @@ Since the blockchain will be storing the actual data on the blockchain the price
 | ------------- |:-------------:|
 | 04/17/19      | <ul><li> [x] Finish project proposal.</li></ul>  |
 | 04/24/19      | <ul><li> [x] Research exisitng DFS, and their architecture/implimentation </li><li> [ ] Implement basic application UI </li></ul>      | 
-| 05/01/19      | nan      |
+| 05/01/19      | <ul><li> [x] Finish Midpoint milestone   <ul><li>[x] Define API</li><li>[x] TX fee</li><li>[x] Data integrity</li><li>[x] Application architecture</li></ul></li></ul>      |
 | 04/28/19      | nan      |
 | 04/16/19      | Finished demo video, and project description.      |
-
 
 
