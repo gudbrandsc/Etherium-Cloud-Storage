@@ -11,32 +11,31 @@ and one way hash function they can ensure total privacy, cheaper prices and high
 rate.
 
 **Functionalities/Success**
- • User can upload and delete his own files
+
+ • User can upload his own files
  • User can view their own list of files.
- • Users can not view or modify other users data.(Unless I will be able to enable file
+ • Users can not view other users data.(Unless I will be able to enable file
 sharing)
 
-User will encrypt using their own private key. 
-Miner will take the encrypted data and hash it. 
-Respond back to the user with the transaction hash. 
-Add transaction to blockchain
 
-**How to make sure that the miners do not change the content before putting it in the blockchain**
-- Alice will create a data block including: byte array, encrypted(hash(bytearray)),hash(bytearray), public key
-- When a transaction is added to a 
+## TX fee and data integrity 
 
+TX fees will be paid upon retrieval of a file. If the file matches what the receiver expects then a TX fee based on the file size will be rewarded to the miner. This will give the miners an incentive to keep the integrity of the data, as well as trying to respond as quickly as possible back to the client with the desired data. 
 
-## How will the TX fee be decided
-Yet to be decided
+When clients receive the data from the miner, they will verify the integrity of the data and then pay the miner. For this application, we will assume that all clients are behaving, and thereby paying the miner as long as their file is not tampered with.  
+
 
 ## How will the list of files be created and served
+The client will be responsible for storing the necessary information about their stored files in a static file. This static file will be written too by the application when a file is stored, and will also be read once the application starts. This file will be extremely important to keep secure as it will have all the information necessary to retrieve clients files. 
 
-- User will create a data block to store in the blockchain. 
-- User will then use his private key to encrypt the data block.
-- The user will then send the datablock to a random node in the network. 
-- The node will add the data block to the users data repo list
-- When user wants to see the data he can use his private key to decrypt the data
+For each file that is stored their required information will be stored as follows(**Note:** This might change): filename, key pair, file hash, block hash.
+
+## Limitations 
+
+Size the blockchain will be storing the actual data on the chain the price of storage will be fairly expensive since all miners must store the entire chain which includes the data. 
 
 ## Architecture
 
 ## API 
+
+## Timeline
