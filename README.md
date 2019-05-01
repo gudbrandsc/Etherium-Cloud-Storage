@@ -39,7 +39,8 @@ Since the blockchain will be storing the actual data on the blockchain the price
 ![alt text](https://github.com/usfcs686/cs686-blockchain-p3-gudbrandsc/blob/master/img/IMG_9183.jpg "Architecture")
 
 ## API 
-**NOTE:** These methods are not final and may change during the development process.  Also the dataHash, and json body may change to also include the TimeStamp to allow a user to upload the same file.
+**NOTE:** These methods are not final and may change during the development process.  Also the dataHash, and json body may change to also include the TimeStamp to allow a user to upload the same file.  
+
   **/store**  
   **Method:** POST  
   **Request:** 
@@ -90,13 +91,11 @@ Since the blockchain will be storing the actual data on the blockchain the price
 
 | Date        | Milestone      
 | ------------- |:-------------:|
-| 04/22/19      | nan      |
-| 04/22/19      | nan      | 
-| 04/22/19      | nan      |
-| 04/22/19      | nan      |
-| 04/22/19      | nan      |
-| 04/22/19      | nan      |
-| 04/22/19      | nan      |
+| 04/17/19      | <ul><li> [x] Finish project proposal.</li></ul>  |
+| 04/24/19      | <ul><li> [x] Research exisitng DFS, and their architecture/implimentation </li><li> [ ] Implement basic application UI </li></ul>      | 
+| 05/01/19      | nan      |
+| 04/28/19      | nan      |
+| 04/16/19      | Finished demo video, and project description.      |
 
 
 
