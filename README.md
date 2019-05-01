@@ -12,11 +12,9 @@ rate.
 
 **Functionalities/Success**
 
- • User can upload his own files
- 
- • User can view their own list of files.
- 
- • Users can not view other users data.(Unless I will be able to enable file
+  * User can upload his own files
+  * User can view their own list of files.
+  * Users can not view other users data.(Unless I will be able to enable file
 sharing)
 
 
@@ -34,9 +32,10 @@ For each file that is stored their required information will be stored as follow
 
 ## Limitations 
 
-Size the blockchain will be storing the actual data on the chain the price of storage will be fairly expensive since all miners must store the entire chain which includes the data. 
+Since the blockchain will be storing the actual data on the blockchain the price of storage will be fairly expensive since all miners must store the entire chain which includes the data. 
 
 ## Architecture
+![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Logo Title Text 1")
 
 ## API 
 
