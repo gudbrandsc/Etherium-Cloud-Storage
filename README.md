@@ -35,7 +35,7 @@ For each file that is stored their required information will be stored as follow
 Since the blockchain will be storing the actual data on the blockchain the price of storage will be fairly expensive since all miners must store the entire chain which includes the data. 
 
 ## Architecture
-![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Logo Title Text 1")
+![alt text](https://github.com/usfcs686/cs686-blockchain-p3-gudbrandsc/blob/master/img/IMG_9183.jpg "Architecture")
 
 ## API 
 
