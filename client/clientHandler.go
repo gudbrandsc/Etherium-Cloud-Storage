@@ -2,11 +2,14 @@ package client
 
 import (
 	"crypto/rsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/sha3"
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 )
 
 type ClientInfo struct {
@@ -20,10 +23,33 @@ type client_encoded struct {
 }
 
 type fileInfo struct {
-	filename       string
-	blockHash      string
-	ciphertextData []byte
-	fileType       string
+	signature    fileData
+	publicKey    []byte
+	fileDataHash string
+	blockHeight  int32
+}
+
+type fileData struct {
+	FileData []byte
+	FileName string
+	FileType string
+}
+type fileData_encoded struct {
+	FileData []byte `json:"FileData"`
+	FileName string `json:"FileName"`
+	FileType string `json:"FileType"`
+}
+
+type storeFileInfo struct {
+	CiphertextData []byte
+	DataHash       string
+	PublicKey      string
+}
+
+type storeFileInfo_encoded struct {
+	CiphertextData []byte `json:"CiphertextData"`
+	DataHash       string `json:"DataHash"`
+	PublicKey      string `json:"PublicKey"`
 }
 
 func GetPrivateKey(cf ClientInfo) *rsa.PrivateKey {
@@ -37,7 +63,7 @@ func GetPublicKey(cf ClientInfo) *rsa.PublicKey {
 func LoadUserData() ClientInfo {
 	clientData := ClientInfo{}
 
-	if exists("./clientData/clientInfo.json") {
+	if Exists("./clientData/clientInfo.json") {
 		jsonFile, err := os.Open("./clientData/clientInfo.json")
 		if err != nil {
 			fmt.Println("Unable to read user data")
@@ -76,7 +102,7 @@ func LoadUserData() ClientInfo {
 	return clientData
 }
 
-func exists(path string) bool {
+func Exists(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true
@@ -98,6 +124,25 @@ func ListAllLocalFiles() {
 	}
 }
 
+func StoreFile(filename string, publicKey []byte) {
+	fileString := strings.Split(filename, ".")
+	fileData := fileData{}
+	fileData.FileData = ReadFileFromLocal(filename)
+	fileData.FileName = fileString[0]
+	fileData.FileType = fileString[1]
+	fileDataByteArray := fileDataToJson(fileData)
+
+	sum := sha3.Sum256(fileDataByteArray)
+	dataHash := hex.EncodeToString(sum[:])
+
+	storeFileInfo := storeFileInfo{}
+	storeFileInfo.DataHash = dataHash
+	storeFileInfo.PublicKey = string(publicKey)
+	storeFileInfo.CiphertextData = EncryptWithPublicKey(fileDataByteArray, BytesToPublicKey(publicKey))
+
+	fmt.Println(string(storeFileInfoToJson(storeFileInfo)))
+}
+
 func WriteFileToLocal(data []byte) {
 	err := ioutil.WriteFile("./outFiles/test2.jpg", data, 0644)
 	if err != nil {
@@ -105,9 +150,33 @@ func WriteFileToLocal(data []byte) {
 	}
 }
 
-func ReadFileFromLocal(name string) {
-	_, err := ioutil.ReadFile("./testFiles/" + name) // _ returns [] byte
+func ReadFileFromLocal(name string) []byte {
+	data, err := ioutil.ReadFile("./testFiles/" + name) // _ returns [] byte
 	if err != nil {
 		fmt.Println("File reading error", err)
 	}
+	return data
+}
+
+func fileDataToJson(fileData fileData) []byte {
+	encodedData := &fileData_encoded{
+		FileData: fileData.FileData,
+		FileName: fileData.FileName,
+		FileType: fileData.FileType,
+	}
+	result, _ := json.Marshal(encodedData)
+
+	return result
+}
+
+func storeFileInfoToJson(storeFileInfo storeFileInfo) []byte {
+	encodedData := &storeFileInfo_encoded{
+		CiphertextData: storeFileInfo.CiphertextData,
+		DataHash:       storeFileInfo.DataHash,
+		PublicKey:      storeFileInfo.PublicKey,
+	}
+	result, _ := json.Marshal(encodedData)
+
+	return result
+
 }
