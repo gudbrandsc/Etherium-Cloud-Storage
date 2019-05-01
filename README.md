@@ -23,7 +23,7 @@ sharing)
 
 TX fees will be paid upon retrieval of a file. If the file matches what the receiver expects then a TX fee based on the file size will be rewarded to the miner. This will give the miners an incentive to keep the integrity of the data, as well as trying to respond as quickly as possible back to the client with the desired data. 
 
-When clients receive the data from the miner, they will verify the integrity of the data and then pay the miner. For this application, we will assume that all clients are behaving, and thereby paying the miner as long as their file is not tampered with.  
+When clients receive the data from the miner, they will verify the integrity of the data and then pay the miner. For this application, we will assume that all clients are behaving, and thereby paying the miner as long as their file is not tampered with. The client will also be responsible for creating their own key pair(public and private key), that they will use to encrypt their data, and that will also be used for authentication on retrieval. 
 
 
 ## How will the list of files be created and served
@@ -83,17 +83,17 @@ Since the blockchain will be storing the actual data on the blockchain the price
    "Amount": "Float",
   }
 ```
-**Description:** Return JSON string of a specific block to the downloader.  
+**Description:** Method to pay a miner for a file retrieval, the amount will be based on the response value from the store request.
 
 
 
 ## Timeline
 
 | Date        | Milestone      
-| ------------- |:-------------:|
+| ------------- |:-------------|
 | 04/17/19      | <ul><li> [x] Finish project proposal.</li></ul>  |
 | 04/24/19      | <ul><li> [x] Research exisitng DFS, and their architecture/implimentation </li><li> [ ] Implement basic application UI </li></ul>      | 
-| 05/01/19      | <ul><li> [x] Finish Midpoint milestone   <ul><li>[x] Define API</li><li>[x] TX fee</li><li>[x] Data integrity</li><li>[x] Application architecture</li></ul></li></ul>      |
+| 05/01/19      | <ul><li> [x] Finish Midpoint milestone   <ul><li>[x] Define API</li><li>[x] TX fee</li><li>[x] Data integrity</li><li>[x] Application architecture</li><li>[x] Finish project timeline</li></ul></li><li> [x] Implement basic application UI </li><li> [x] Client key pair generator </li></ul>      |
 | 04/28/19      | nan      |
 | 04/16/19      | Finished demo video, and project description.      |
 
