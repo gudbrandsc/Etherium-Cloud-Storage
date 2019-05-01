@@ -13,7 +13,9 @@ rate.
 **Functionalities/Success**
 
  • User can upload his own files
+ 
  • User can view their own list of files.
+ 
  • Users can not view other users data.(Unless I will be able to enable file
 sharing)
 
