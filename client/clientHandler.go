@@ -13,51 +13,44 @@ import (
 )
 
 type ClientInfo struct {
-	privateKey *rsa.PrivateKey
-	publicKey  *rsa.PublicKey
+	privateKey  *rsa.PrivateKey
+	publicKey   *rsa.PublicKey
+	Client_data map[string]MapData
 }
 
-type client_encoded struct {
-	PrivateKey []byte `json:"privateKey"`
-	PublicKey  []byte `json:"publicKey"`
+type Client_encoded struct {
+	PrivateKey  []byte             `json:"privateKey"`
+	PublicKey   []byte             `json:"publicKey"`
+	Client_data map[string]MapData `json:"data"`
+}
+type MapData struct {
+	BlockHash   string
+	blockHeight int32
+	FileName    string
+	FileHash    string
 }
 
-type fileInfo struct {
-	signature    fileData
-	publicKey    []byte
-	fileDataHash string
-	blockHeight  int32
-}
-
-type fileData struct {
+type FileData struct {
 	FileData []byte
 	FileName string
 	FileType string
 }
-type fileData_encoded struct {
+type FileData_encoded struct {
 	FileData []byte `json:"FileData"`
 	FileName string `json:"FileName"`
 	FileType string `json:"FileType"`
 }
 
-type storeFileInfo struct {
+type StoreFileInfo struct {
 	CiphertextData []byte
 	DataHash       string
 	PublicKey      string
 }
 
-type storeFileInfo_encoded struct {
+type StoreFileInfo_encoded struct {
 	CiphertextData []byte `json:"CiphertextData"`
 	DataHash       string `json:"DataHash"`
 	PublicKey      string `json:"PublicKey"`
-}
-
-func GetPrivateKey(cf ClientInfo) *rsa.PrivateKey {
-	return cf.privateKey
-}
-
-func GetPublicKey(cf ClientInfo) *rsa.PublicKey {
-	return cf.publicKey
 }
 
 func LoadUserData() ClientInfo {
@@ -73,30 +66,20 @@ func LoadUserData() ClientInfo {
 		byteValue, _ := ioutil.ReadAll(jsonFile)
 		jsonFile.Close()
 
-		data := client_encoded{}
+		data := Client_encoded{}
 
 		json.Unmarshal([]byte(byteValue), &data)
 		clientData.privateKey = BytesToPrivateKey(data.PrivateKey)
 		clientData.publicKey = BytesToPublicKey(data.PublicKey)
+		clientData.Client_data = data.Client_data
 
-		fmt.Println("Loaded existing key pair")
+		fmt.Println("Loaded existing key pair, and client data")
 
 	} else {
 		fmt.Println("Generating private and public key..")
 		clientData.privateKey, clientData.publicKey = GenerateKeyPair()
-
-		encodedB := &client_encoded{
-			PrivateKey: PrivateKeyToBytes(clientData.privateKey),
-			PublicKey:  PublicKeyToBytes(clientData.publicKey),
-		}
-
-		clientInfoJson, _ := json.Marshal(encodedB)
-
-		err := ioutil.WriteFile("./clientData/clientInfo.json", clientInfoJson, 0644)
-		if err != nil {
-			fmt.Println("Unable to write keys to file.")
-			os.Exit(1)
-		}
+		clientData.Client_data = make(map[string]MapData)
+		writeClientInfoToFile(&clientData)
 
 	}
 	return clientData
@@ -114,37 +97,85 @@ func Exists(path string) bool {
 }
 
 func ListAllLocalFiles() {
+	fmt.Println(" -------------------")
+	fmt.Println("|\tLocal files\t\t|")
+	fmt.Println(" -------------------")
+
 	files, err := ioutil.ReadDir("./testFiles")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, f := range files {
-		fmt.Println(f.Name())
+		fmt.Println("| " + f.Name())
 	}
+	fmt.Println(" -------------------")
+
 }
 
-func StoreFile(filename string, publicKey []byte) {
-	fileString := strings.Split(filename, ".")
-	fileData := fileData{}
-	fileData.FileData = ReadFileFromLocal(filename)
-	fileData.FileName = fileString[0]
-	fileData.FileType = fileString[1]
-	fileDataByteArray := fileDataToJson(fileData)
+func StoreFile(filename string, clientData *ClientInfo) {
+	if _, ok := clientData.Client_data[filename]; !ok {
+		fileString := strings.Split(filename, ".")
+		fmt.Println(filename)
+		fileData := FileData{}
+		fileData.FileData = ReadFileFromLocal(filename)
+		fileData.FileName = fileString[0]
+		fileData.FileType = fileString[1]
+		fileDataByteArray := fileDataToJson(fileData)
 
-	sum := sha3.Sum256(fileDataByteArray)
-	dataHash := hex.EncodeToString(sum[:])
+		sum := sha3.Sum256(fileDataByteArray)
+		dataHash := hex.EncodeToString(sum[:])
 
-	storeFileInfo := storeFileInfo{}
-	storeFileInfo.DataHash = dataHash
-	storeFileInfo.PublicKey = string(publicKey)
-	storeFileInfo.CiphertextData = EncryptWithPublicKey(fileDataByteArray, BytesToPublicKey(publicKey))
+		storeFileInfo := StoreFileInfo{}
+		storeFileInfo.DataHash = dataHash
+		storeFileInfo.PublicKey = string(PublicKeyToBytes(clientData.publicKey))
+		storeFileInfo.CiphertextData = EncryptWithPublicKey(fileDataByteArray, clientData.publicKey)
 
-	fmt.Println(string(storeFileInfoToJson(storeFileInfo)))
+		//TODO change this based on respose from miner
+		mapData := MapData{"", 1, filename, dataHash}
+		clientData.Client_data[filename] = mapData
+		writeClientInfoToFile(clientData)
+
+		//fmt.Println(string(storeFileInfoToJson(StoreFileInfo)))
+		//RetrieveFile(string(storeFileInfoToJson(storeFileInfo)), clientData)
+		//TODO Send file to a miner
+		fmt.Println(" ------------------------")
+		fmt.Println("|File successfully stored|")
+		fmt.Println(" ------------------------")
+	} else {
+		fmt.Println(" ----------------------------------")
+		fmt.Println("|File already stored on block chain|")
+		fmt.Println(" ----------------------------------")
+	}
+
 }
 
-func WriteFileToLocal(data []byte) {
-	err := ioutil.WriteFile("./outFiles/test2.jpg", data, 0644)
+func RetrieveFile(FileInfo string, clientData *ClientInfo) {
+	data := StoreFileInfo_encoded{}
+	newFile := StoreFileInfo{}
+	newFileData := FileData{}
+
+	json.Unmarshal([]byte(FileInfo), &data)
+
+	newFile.PublicKey = data.PublicKey
+	newFile.CiphertextData = data.CiphertextData
+	newFile.DataHash = data.DataHash
+
+	jsonString := DecryptWithPrivateKey(newFile.CiphertextData, clientData.privateKey)
+
+	test := FileData{}
+	json.Unmarshal([]byte(jsonString), &test)
+
+	newFileData.FileData = test.FileData
+	newFileData.FileType = test.FileType
+	newFileData.FileName = test.FileName
+
+	WriteFileToLocal(newFileData.FileData, newFileData.FileName, newFileData.FileType)
+
+}
+
+func WriteFileToLocal(data []byte, filename string, extention string) {
+	err := ioutil.WriteFile("./outFiles/"+filename+"."+extention, data, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -158,8 +189,8 @@ func ReadFileFromLocal(name string) []byte {
 	return data
 }
 
-func fileDataToJson(fileData fileData) []byte {
-	encodedData := &fileData_encoded{
+func fileDataToJson(fileData FileData) []byte {
+	encodedData := &FileData_encoded{
 		FileData: fileData.FileData,
 		FileName: fileData.FileName,
 		FileType: fileData.FileType,
@@ -169,8 +200,8 @@ func fileDataToJson(fileData fileData) []byte {
 	return result
 }
 
-func storeFileInfoToJson(storeFileInfo storeFileInfo) []byte {
-	encodedData := &storeFileInfo_encoded{
+func storeFileInfoToJson(storeFileInfo StoreFileInfo) []byte {
+	encodedData := &StoreFileInfo_encoded{
 		CiphertextData: storeFileInfo.CiphertextData,
 		DataHash:       storeFileInfo.DataHash,
 		PublicKey:      storeFileInfo.PublicKey,
@@ -178,5 +209,31 @@ func storeFileInfoToJson(storeFileInfo storeFileInfo) []byte {
 	result, _ := json.Marshal(encodedData)
 
 	return result
+}
+
+func writeClientInfoToFile(clientData *ClientInfo) {
+
+	encodedB := &Client_encoded{
+		PrivateKey:  PrivateKeyToBytes(clientData.privateKey),
+		PublicKey:   PublicKeyToBytes(clientData.publicKey),
+		Client_data: clientData.Client_data,
+	}
+
+	clientInfoJson, _ := json.Marshal(encodedB)
+	err := ioutil.WriteFile("./clientData/clientInfo.json", clientInfoJson, 0644)
+	if err != nil {
+		fmt.Println("Unable to write keys to file.")
+		os.Exit(1)
+	}
+}
+func ListStoredFiles(clientData *ClientInfo) {
+	fmt.Println(" -------------------")
+	fmt.Println("|\tStored files\t|")
+	fmt.Println(" -------------------")
+
+	for key, _ := range clientData.Client_data {
+		fmt.Printf("| %s \n", key)
+	}
+	fmt.Println(" -------------------")
 
 }

@@ -359,3 +359,12 @@ func GenerateRandomMPT() p1.MerklePatriciaTrie {
 func Canonical(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, SBC.ShowCanonical())
 }
+
+func Store(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(body)
+}
