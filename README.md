@@ -94,8 +94,8 @@ Since the blockchain will be storing the actual data on the blockchain the price
 | 04/17/19      | <ul><li> [x] Finish project proposal.</li></ul>  |
 | 04/24/19      | <ul><li> [x] Research exisitng DFS, and their architecture/implimentation </li><li> [ ] Implement basic application UI </li></ul>      | 
 | 05/01/19      | <ul><li> [x] Finish Midpoint milestone   <ul><li>[x] Define API</li><li>[x] Define TX fee</li><li>[x] Define Data integrity</li><li>[x] Define Application architecture</li><li>[x] Finish project timeline </li></ul></li><li> [x] Implement basic application UI </li><li> [x] Client key pair generator </li><li> [x] Client storing and retrieval functions </li></ul>      |
-| 05/05/19      | <ul><li> [ ] Implement storing API <li><li> [ ] Implement retrieval API <li><li> [ ] Implement TX API <li> <ul> |
-| 05/10/19      | <ul><li> [ ] Finished with testing and bug fixing <li><ul>      |
+| 05/05/19      | <ul><li> [ ] Implement storing API </li><li> [ ] Implement retrieval API </li><li> [ ] Implement TX API </li> </ul> |
+| 05/10/19      | <ul><li> [ ] Finish testing and bug fixing </li></ul>      |
 | 05/16/19      | Finished demo video, and project description.      |
 
 
