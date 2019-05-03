@@ -23,7 +23,10 @@ sharing)
 
 TX fees will be paid upon retrieval of a file. If the file matches what the receiver expects then a TX fee based on the file size will be rewarded to the miner. This will give the miners an incentive to keep the integrity of the data, as well as trying to respond as quickly as possible back to the client with the desired data. 
 
-When clients receive the data from the miner, they will verify the integrity of the data and then pay the miner. For this application, we will assume that all clients are behaving, and thereby paying the miner as long as their file is not tampered with. The client will also be responsible for creating their own key pair(public and private key), that they will use to encrypt their data, and that will also be used for authentication on retrieval. 
+When clients receive the data from the miner, they will verify the integrity of the data and then pay the miner. For this application, we will assume that all clients are behaving, and thereby paying the miner as long as their file are not tampered with. The client will also be responsible for creating their own key pair(public and private key), that they will use to encrypt their data, and that will also be used for signature verification on retrieval. 
+The blockchain will costist of two MPT's; 
+ * One too store the transaction history for all the clients and miners. 
+ * One to store the data(files) in each block. This mpt will remove all its entries once a block is created to ensure that we don't have to store the same file n times where n is the number of blocks after the first block containing the data. 
 
 
 ## How will the list of files be created and served
