@@ -50,8 +50,14 @@ var routes = Routes{
 	},
 	Route{
 		"Store",
-		"GET",
+		"POST",
 		"/store",
 		Store,
+	},
+	Route{
+		"retrieve",
+		"GET",
+		"/retrieve/{fileHash}/{blockHeight}/{blockHash}",
+		Retrieve,
 	},
 }

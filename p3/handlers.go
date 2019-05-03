@@ -32,6 +32,31 @@ var JSON_BLOCKCHAIN = "[{\"hash\": \"3ff3b4efe9177f705550231079c2459ba54a22d340a
 var SBC data.SyncBlockChain
 var Peers data.PeerList
 var ifStarted bool
+var mpt p1.MerklePatriciaTrie
+
+type StoreFileInfo struct {
+	CiphertextData []byte
+	Signature      []byte
+	PublicKey      string
+	DataHash       string
+}
+
+type StoreFileInfo_encoded struct {
+	CiphertextData []byte `json:"CiphertextData"`
+	Signature      []byte `json:"Signature"`
+	PublicKey      string `json:"PublicKey"`
+	DataHash       string `json:"DataHash"`
+}
+
+type file_retrieval_resp struct {
+	TXfee int32                 `json:"TXfee"`
+	Data  StoreFileInfo_encoded `json:"Data"`
+}
+
+type store_resp struct {
+	BlockHash   string `json:"BlockHash"`
+	BlockHeight int32  `json:"BlockHeight"`
+}
 
 //Initialize all variables for the server
 func init() {
@@ -39,6 +64,7 @@ func init() {
 	id, _ := strconv.ParseInt(os.Args[1], 10, 32)
 	Peers = data.NewPeerList( /*Register()*/ int32(id), 32) // Uses port number as ID since TA server is down
 	ifStarted = false
+	mpt.Initial()
 }
 
 // Register ID, download BlockChain, start HeartBeat
@@ -53,7 +79,7 @@ func Start(w http.ResponseWriter, r *http.Request) {
 	}
 	ifStarted = true
 	go StartHeartBeat()
-	go StartTryingNonces()
+	//go StartTryingNonces()
 	fmt.Fprintf(w, "Node started")
 }
 
@@ -260,59 +286,55 @@ func StartTryingNonces() {
 	duration := time.Duration(4) * time.Second // Pause for 10 seconds
 	time.Sleep(duration)
 	fmt.Println("Start nonce")
-	for true {
-		//Get latest block
-		latestBlockList := SBC.GetLatestBlocks()
-		blockListLength := len(latestBlockList) - 1
-		randomVal := 0
-		currentChainLength := SBC.GetChainLength()
+	//Get latest block
+	latestBlockList := SBC.GetLatestBlocks()
+	blockListLength := len(latestBlockList) - 1
+	randomVal := 0
+	currentChainLength := SBC.GetChainLength()
 
-		if blockListLength > 0 {
-			randomVal = rand.Intn(int(blockListLength)-0) + 0
-		}
+	if blockListLength > 0 {
+		randomVal = rand.Intn(int(blockListLength)-0) + 0
+	}
 
-		parentBlock := latestBlockList[randomVal]
-		mpt := GenerateRandomMPT()
+	parentBlock := latestBlockList[randomVal]
+	powString := "9999999999"
+	correctNonce := ""
+	ifNewBlock := true
+	fmt.Println("find new block for : " + parentBlock.GetHash())
 
-		powString := "9999999999"
-		correctNonce := ""
-		ifNewBlock := true
-		fmt.Println("find new block for : " + parentBlock.GetHash())
-
-		for !checkPowResult(powString) {
-			if currentChainLength != SBC.GetChainLength() {
-				ifNewBlock = false
-				break
-			} else {
-				nonce, err := randomHex()
-				if err == nil {
-					hashStr := parentBlock.Header.Hash + nonce + mpt.Root
-					sum := sha3.Sum256([]byte(hashStr))
-					powString = hex.EncodeToString(sum[:])
-					correctNonce = nonce
-				}
+	for !checkPowResult(powString) {
+		if currentChainLength != SBC.GetChainLength() {
+			ifNewBlock = false
+			break
+		} else {
+			nonce, err := randomHex()
+			if err == nil {
+				hashStr := parentBlock.Header.Hash + nonce + mpt.Root
+				sum := sha3.Sum256([]byte(hashStr))
+				powString = hex.EncodeToString(sum[:])
+				correctNonce = nonce
 			}
 		}
+	}
 
-		if ifNewBlock {
-			fmt.Println("Found pow send to all peers")
-			fmt.Println(powString)
-			newBlock := SBC.GenBlock(mpt, correctNonce, parentBlock.Header.Hash)
-			SBC.Insert(newBlock)
-			newBlockJson := newBlock.EncodeToJSON()
-			Peers.Rebalance() // Make sure to only send the correct amount of peers
-			peerMapJson, _ := Peers.PeerMapToJson()
-			heartBeatData := data.NewHeartBeatData(ifNewBlock, Peers.GetSelfId(), newBlockJson, peerMapJson, SELF_ADDR)
-			ForwardHeartBeat(heartBeatData)
-		} else {
-			fmt.Println("Someone solved pow before me")
-		}
+	if ifNewBlock {
+		fmt.Println("Found pow send to all peers")
+		fmt.Println(powString)
+		newBlock := SBC.GenBlock(mpt, correctNonce, parentBlock.Header.Hash)
+		SBC.Insert(newBlock)
+		newBlockJson := newBlock.EncodeToJSON()
+		Peers.Rebalance() // Make sure to only send the correct amount of peers
+		peerMapJson, _ := Peers.PeerMapToJson()
+		heartBeatData := data.NewHeartBeatData(ifNewBlock, Peers.GetSelfId(), newBlockJson, peerMapJson, SELF_ADDR)
+		ForwardHeartBeat(heartBeatData)
+	} else {
+		fmt.Println("Someone solved pow before me")
 	}
 }
 
 // Check if the first 7 chars in the POW are 0's
 func checkPowResult(pow string) bool {
-	first7 := pow[0:6]
+	first7 := pow[0:3]
 	for _, char := range first7 {
 		if char != '0' {
 			return false
@@ -361,10 +383,94 @@ func Canonical(w http.ResponseWriter, r *http.Request) {
 }
 
 func Store(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("--- Got store requests ---")
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		panic(err)
 	}
+	newData := StoreFileInfo{}
+	data := StoreFileInfo_encoded{}
 
-	fmt.Println(body)
+	json.Unmarshal([]byte(body), &data)
+	newData.CiphertextData = data.CiphertextData
+	newData.Signature = data.Signature
+	newData.PublicKey = data.PublicKey
+	newData.DataHash = data.DataHash
+	mpt.Insert(newData.DataHash, string(body))
+
+	blockHash, blockHeight := generateNewBlock(newData.DataHash, string(body))
+	jsonResp := store_resp{blockHash, blockHeight}
+	result, _ := json.Marshal(jsonResp)
+	fmt.Fprint(w, string(result))
+}
+
+func Retrieve(w http.ResponseWriter, r *http.Request) {
+	s := strings.Split(r.URL.Path, "/")
+	//val, err :=
+
+	fileHash := s[2]
+	blockHeight, _ := strconv.ParseInt(s[3], 10, 32)
+	blockHash := s[4]
+	foundBlock, found := SBC.GetBlock(int32(blockHeight), blockHash)
+	if !found {
+		fmt.Println("Cant find block")
+
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	fmt.Println("Found block")
+	//TODO change resp status
+	data, err := foundBlock.Value.Get(fileHash)
+	if err != nil {
+		fmt.Println("Cant find data in mpt")
+
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	minerResp := StoreFileInfo_encoded{}
+	json.Unmarshal([]byte(data), &minerResp)
+
+	b, err := json.Marshal(file_retrieval_resp{10, minerResp})
+
+	fmt.Fprint(w, string(b))
+}
+
+func generateNewBlock(key string, value string) (string, int32) {
+	latestBlockList := SBC.GetLatestBlocks()
+	blockListLength := len(latestBlockList) - 1
+	randomVal := 0
+
+	if blockListLength > 0 {
+		randomVal = rand.Intn(int(blockListLength)-0) + 0
+	}
+
+	parentBlock := latestBlockList[randomVal]
+	powString := "9999999999"
+	correctNonce := ""
+	fmt.Println("find new block for : " + parentBlock.GetHash())
+
+	for !checkPowResult(powString) {
+		nonce, err := randomHex()
+		if err == nil {
+			hashStr := parentBlock.Header.Hash + nonce + mpt.Root
+			sum := sha3.Sum256([]byte(hashStr))
+			powString = hex.EncodeToString(sum[:])
+			correctNonce = nonce
+		}
+
+	}
+
+	fmt.Println("Found pow send to all peers")
+	fmt.Println(powString)
+	newBlock := SBC.GenBlock(mpt, correctNonce, parentBlock.Header.Hash)
+	SBC.Insert(newBlock)
+	newBlockJson := newBlock.EncodeToJSON()
+	Peers.Rebalance() // Make sure to only send the correct amount of peers
+	peerMapJson, _ := Peers.PeerMapToJson()
+	heartBeatData := data.NewHeartBeatData(true, Peers.GetSelfId(), newBlockJson, peerMapJson, SELF_ADDR)
+	ForwardHeartBeat(heartBeatData)
+	mpt.Initial()
+
+	return newBlock.GetHash(), newBlock.GetHeight()
 }

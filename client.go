@@ -8,8 +8,19 @@ import (
 	"strings"
 )
 
+/*
+Encrypt signature with private key
+encrypt data with syntetic public key -> That way only I can see it
+*/
+
 func main() {
+
 	clientData := client.LoadUserData()
+	text := []byte("Hello world")
+	signature, _ := client.CreateSignature(clientData.GetPrivateKey(), text)
+	if client.VerifySignature(signature, clientData.GetPrivateKey(), text) {
+		fmt.Println("Valid")
+	}
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("Welcome, to GudbrandCoin")
@@ -41,7 +52,11 @@ func main() {
 		} else if strings.Compare("store", textArray[0]) == 0 {
 			storeFile(textArray, clientData)
 		} else if strings.Compare("get", textArray[0]) == 0 {
-			fmt.Println("Send request to BC to get a file ")
+			if len(textArray) != 2 {
+				fmt.Print("Invalid command please use format: get <filename>\n")
+			} else {
+				client.RetrieveFile(textArray[1], &clientData)
+			}
 		} else {
 			fmt.Println("Invalid command, type help for command info")
 		}

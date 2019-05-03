@@ -1,6 +1,8 @@
 package client
 
 import (
+	"bytes"
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/hex"
 	"encoding/json"
@@ -8,6 +10,7 @@ import (
 	"golang.org/x/crypto/sha3"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 )
@@ -15,17 +18,20 @@ import (
 type ClientInfo struct {
 	privateKey  *rsa.PrivateKey
 	publicKey   *rsa.PublicKey
+	aesSecret   []byte
 	Client_data map[string]MapData
 }
 
 type Client_encoded struct {
 	PrivateKey  []byte             `json:"privateKey"`
 	PublicKey   []byte             `json:"publicKey"`
+	AesSecret   []byte             `json:"AesSecret"`
 	Client_data map[string]MapData `json:"data"`
 }
+
 type MapData struct {
 	BlockHash   string
-	blockHeight int32
+	BlockHeight int32
 	FileName    string
 	FileHash    string
 }
@@ -43,16 +49,32 @@ type FileData_encoded struct {
 
 type StoreFileInfo struct {
 	CiphertextData []byte
-	DataHash       string
+	Signature      []byte
 	PublicKey      string
+	DataHash       string
 }
 
 type StoreFileInfo_encoded struct {
 	CiphertextData []byte `json:"CiphertextData"`
-	DataHash       string `json:"DataHash"`
+	Signature      []byte `json:"Signature"`
 	PublicKey      string `json:"PublicKey"`
+	DataHash       string `json:"DataHash"`
 }
 
+type store_resp struct {
+	BlockHash   string `json:"BlockHash"`
+	BlockHeight int32  `json:"BlockHeight"`
+}
+type file_retrieval_resp struct {
+	TXfee int32         `json:"TXfee"`
+	Data  StoreFileInfo `json:"Data"`
+}
+
+var FIRST_NODE_ADDR = "http://localhost:6686"
+
+func (client *ClientInfo) GetPrivateKey() *rsa.PrivateKey {
+	return client.privateKey
+}
 func LoadUserData() ClientInfo {
 	clientData := ClientInfo{}
 
@@ -72,12 +94,21 @@ func LoadUserData() ClientInfo {
 		clientData.privateKey = BytesToPrivateKey(data.PrivateKey)
 		clientData.publicKey = BytesToPublicKey(data.PublicKey)
 		clientData.Client_data = data.Client_data
+		clientData.aesSecret = data.AesSecret
 
 		fmt.Println("Loaded existing key pair, and client data")
 
 	} else {
 		fmt.Println("Generating private and public key..")
 		clientData.privateKey, clientData.publicKey = GenerateKeyPair()
+		key := make([]byte, 32)
+		_, err := rand.Read(key)
+		if err != nil {
+			fmt.Println("Unable to create Aes key")
+			os.Exit(1)
+		}
+		fmt.Println(key)
+		clientData.aesSecret = key
 		clientData.Client_data = make(map[string]MapData)
 		writeClientInfoToFile(&clientData)
 
@@ -123,25 +154,29 @@ func StoreFile(filename string, clientData *ClientInfo) {
 		fileData.FileType = fileString[1]
 		fileDataByteArray := fileDataToJson(fileData)
 
-		sum := sha3.Sum256(fileDataByteArray)
-		dataHash := hex.EncodeToString(sum[:])
+		//Create signature from private key, using json string of FileData
+		signature, err := CreateSignature(clientData.privateKey, fileDataToJson(fileData))
+		if err != nil {
+			fmt.Println("failed to create signature. Abort")
+			return
+		}
 
+		hashed := sha3.Sum256(fileDataByteArray)
 		storeFileInfo := StoreFileInfo{}
-		storeFileInfo.DataHash = dataHash
+		storeFileInfo.Signature = signature
 		storeFileInfo.PublicKey = string(PublicKeyToBytes(clientData.publicKey))
-		storeFileInfo.CiphertextData = EncryptWithPublicKey(fileDataByteArray, clientData.publicKey)
+		storeFileInfo.DataHash = hex.EncodeToString(hashed[:])
+		storeFileInfo.CiphertextData = AesEncrypt(clientData.aesSecret, fileDataByteArray)
 
-		//TODO change this based on respose from miner
-		mapData := MapData{"", 1, filename, dataHash}
-		clientData.Client_data[filename] = mapData
-		writeClientInfoToFile(clientData)
+		if sendStoreRequest(storeFileInfo, filename, clientData) {
+			writeClientInfoToFile(clientData)
+			fmt.Println(" ------------------------")
+			fmt.Println("|File successfully stored|")
+			fmt.Println(" ------------------------")
+		} else {
+			fmt.Println("Error on store request")
+		}
 
-		//fmt.Println(string(storeFileInfoToJson(StoreFileInfo)))
-		//RetrieveFile(string(storeFileInfoToJson(storeFileInfo)), clientData)
-		//TODO Send file to a miner
-		fmt.Println(" ------------------------")
-		fmt.Println("|File successfully stored|")
-		fmt.Println(" ------------------------")
 	} else {
 		fmt.Println(" ----------------------------------")
 		fmt.Println("|File already stored on block chain|")
@@ -150,27 +185,45 @@ func StoreFile(filename string, clientData *ClientInfo) {
 
 }
 
-func RetrieveFile(FileInfo string, clientData *ClientInfo) {
-	data := StoreFileInfo_encoded{}
+func RetrieveFile(fileName string, clientData *ClientInfo) {
+	minerResp := file_retrieval_resp{}
 	newFile := StoreFileInfo{}
 	newFileData := FileData{}
 
-	json.Unmarshal([]byte(FileInfo), &data)
+	if _, ok := clientData.Client_data[fileName]; !ok {
+		fmt.Println("File is not stored on block chain")
+		return
+	}
 
-	newFile.PublicKey = data.PublicKey
-	newFile.CiphertextData = data.CiphertextData
-	newFile.DataHash = data.DataHash
+	fileInfo, err := sendRetrieveRequest(fileName, clientData)
+	if err {
+		fmt.Println("Unable to retrieve file")
+		return
+	}
 
-	jsonString := DecryptWithPrivateKey(newFile.CiphertextData, clientData.privateKey)
+	json.Unmarshal([]byte(fileInfo), &minerResp)
+	newFile.PublicKey = minerResp.Data.PublicKey
+	newFile.CiphertextData = minerResp.Data.CiphertextData
+	newFile.Signature = minerResp.Data.Signature
+	txFeeAmount := minerResp.TXfee
+	fmt.Println(txFeeAmount)
 
-	test := FileData{}
-	json.Unmarshal([]byte(jsonString), &test)
+	jsonString := AesDecrypt(clientData.aesSecret, newFile.CiphertextData)
 
-	newFileData.FileData = test.FileData
-	newFileData.FileType = test.FileType
-	newFileData.FileName = test.FileName
+	fileDataEncoded := FileData_encoded{}
+	json.Unmarshal([]byte(jsonString), &fileDataEncoded)
 
-	WriteFileToLocal(newFileData.FileData, newFileData.FileName, newFileData.FileType)
+	newFileData.FileData = fileDataEncoded.FileData
+	newFileData.FileType = fileDataEncoded.FileType
+	newFileData.FileName = fileDataEncoded.FileName
+	fileDataByteArray := fileDataToJson(newFileData)
+
+	if VerifySignature(newFile.Signature, clientData.privateKey, fileDataByteArray) {
+		WriteFileToLocal(newFileData.FileData, newFileData.FileName, newFileData.FileType)
+		//TODO pay miner
+	} else {
+		fmt.Println("Signature not valid -> Do not pay")
+	}
 
 }
 
@@ -203,8 +256,9 @@ func fileDataToJson(fileData FileData) []byte {
 func storeFileInfoToJson(storeFileInfo StoreFileInfo) []byte {
 	encodedData := &StoreFileInfo_encoded{
 		CiphertextData: storeFileInfo.CiphertextData,
-		DataHash:       storeFileInfo.DataHash,
+		Signature:      storeFileInfo.Signature,
 		PublicKey:      storeFileInfo.PublicKey,
+		DataHash:       storeFileInfo.DataHash,
 	}
 	result, _ := json.Marshal(encodedData)
 
@@ -216,6 +270,7 @@ func writeClientInfoToFile(clientData *ClientInfo) {
 	encodedB := &Client_encoded{
 		PrivateKey:  PrivateKeyToBytes(clientData.privateKey),
 		PublicKey:   PublicKeyToBytes(clientData.publicKey),
+		AesSecret:   clientData.aesSecret,
 		Client_data: clientData.Client_data,
 	}
 
@@ -226,6 +281,7 @@ func writeClientInfoToFile(clientData *ClientInfo) {
 		os.Exit(1)
 	}
 }
+
 func ListStoredFiles(clientData *ClientInfo) {
 	fmt.Println(" -------------------")
 	fmt.Println("|\tStored files\t|")
@@ -235,5 +291,53 @@ func ListStoredFiles(clientData *ClientInfo) {
 		fmt.Printf("| %s \n", key)
 	}
 	fmt.Println(" -------------------")
+}
+
+func sendStoreRequest(body StoreFileInfo, filename string, clientData *ClientInfo) bool {
+
+	url := FIRST_NODE_ADDR + "/store"
+	jsonString := storeFileInfoToJson(body)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonString))
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		resp := store_resp{}
+		json.Unmarshal([]byte(bodyBytes), &resp)
+		mapData := MapData{resp.BlockHash, resp.BlockHeight, filename, body.DataHash}
+		clientData.Client_data[filename] = mapData
+		return true
+
+	}
+	return false
+}
+
+func sendRetrieveRequest(filename string, clientData *ClientInfo) ([]byte, bool) {
+	data := clientData.Client_data[filename]
+	url := fmt.Sprintf("%s%s%d%s", FIRST_NODE_ADDR+"/retrieve/", data.FileHash+"/", data.BlockHeight, "/"+data.BlockHash)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, true
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, true
+		}
+
+		return bodyBytes, false
+	}
+	return nil, true
 
 }
