@@ -44,9 +44,9 @@ Since the blockchain will be storing the actual data on the blockchain the price
   **/store**  
   **Method:** POST  
   **Request:** 
-  ```json
+  ```JavaScript
   {
-   "EncryptedByteString": "String", //Using AES encryption
+   "EncryptedByteString": "String", // Using AES encryption
    "PublicKey" :  "String", // RSA Public key
    "Signature" :  "String", //Encrypted with RSA public key 
    "dataHash"  :  "String"
@@ -66,14 +66,14 @@ Since the blockchain will be storing the actual data on the blockchain the price
 **Method:** GET  
 **Response:** If the file exist return it to the client togheter with the TX fee amount for the file retrieval. If the file does not exist then return 404 not found.
   ```json
-  {
-"TXfee": "integer,
+{
+"TXfee": "integer",
 "data":{
-   "EncryptedByteString": "String",
-   "DataHash"  :  "String",
-   "PublicKey" :  "String",
-   "Signature" :  "String"
-  }
+ "EncryptedByteString": "String",
+ "DataHash"  :  "String",
+ "PublicKey" :  "String",
+ "Signature" :  "String"
+ }
 }
 ```
 **Description:** Get method that allows a client to retrieve a file stored on the BlockChain  
