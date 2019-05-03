@@ -46,34 +46,37 @@ Since the blockchain will be storing the actual data on the blockchain the price
   **Request:** 
   ```json
   {
-   "EncryptedByteString": "String",
-   "DataHash"  :  "String",
-   "PublicKey" :  "String",
-   "Signature" :  "String"
+   "EncryptedByteString": "String", //Using AES encryption
+   "PublicKey" :  "String", // RSA Public key
+   "Signature" :  "String", //Encrypted with RSA public key 
+   "dataHash"  :  "String"
   }
 ```
   **Response:** 
   ```json
   {
-   "BlockHash" :  "String",
-   "TxFee"     :  "Float"
+   "BlockHash"       :  "String",
+   "BlockHeight"     :  "Integer"
   }
 ```
 
-  **Description:** Post method that will store a users file to the blockchain. Public key togheter with datahash will be used to verify ownership on file retrieval. The response will contain information about where the data is stored, and the TX fee that needs to be paid for file retrieval.
+  **Description:** Post method that will store a users file to the blockchain. The signature is used to ensure data integrity on retrieval, and is encrypted using RSA private key. The data will be encrypted using AES encryption. Response will contain information about where the data is stored.
  
-**/retrieve/{filehash}/{publickey}/{blockHash}/**  
+**/retrieve/{filehash}/{blockHeight}/{blockHash}/**  
 **Method:** GET  
-**Response:** If the file exist and the provided and the client is verified as the owned of the file then return a json with the data. If the client did not provide the correct ownership data return 401 Unauthorized.
+**Response:** If the file exist return it to the client togheter with the TX fee amount for the file retrieval. If the file does not exist then return 404 not found.
   ```json
   {
+"TXfee": "integer,
+"data":{
    "EncryptedByteString": "String",
    "DataHash"  :  "String",
    "PublicKey" :  "String",
    "Signature" :  "String"
   }
+}
 ```
-**Description:** Get method that allows a client to retrieve a file stored in the BlockChain  
+**Description:** Get method that allows a client to retrieve a file stored on the BlockChain  
 
 **/payTx**  
 **Method:** POST  
@@ -83,7 +86,7 @@ Since the blockchain will be storing the actual data on the blockchain the price
    "Amount": "Float",
   }
 ```
-**Description:** Method to pay a miner for a file retrieval, the amount will be based on the response value from the store request.
+**Description:** Method to pay a miner for a file retrieval, the amount will be based on the response amount from the retrieve request.
 
 
 
