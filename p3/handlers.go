@@ -5,6 +5,8 @@ import (
 	"../p2"
 	"./data"
 	"bytes"
+	"crypto/rsa"
+	"cs686-blockchain-p3-gudbrandsc/client"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -33,6 +35,10 @@ var SBC data.SyncBlockChain
 var Peers data.PeerList
 var ifStarted bool
 var mpt p1.MerklePatriciaTrie
+var clientBalanceMPt p1.MerklePatriciaTrie
+var transactionMpt p1.MerklePatriciaTrie
+var privateKey *rsa.PrivateKey
+var publicKey *rsa.PublicKey
 
 type StoreFileInfo struct {
 	CiphertextData []byte
@@ -65,6 +71,10 @@ func init() {
 	Peers = data.NewPeerList( /*Register()*/ int32(id), 32) // Uses port number as ID since TA server is down
 	ifStarted = false
 	mpt.Initial()
+	clientBalanceMPt.Initial()
+	transactionMpt.Initial()
+	privateKey, publicKey = client.GenerateKeyPair()
+
 }
 
 // Register ID, download BlockChain, start HeartBeat
@@ -366,18 +376,6 @@ func generateRandomString() string {
 	return string(b)
 }
 
-// Generate a MPT and insert 1-15 random key, value pairs
-func GenerateRandomMPT() p1.MerklePatriciaTrie {
-	insertNumber := rand.Intn(15-1) + 1
-	mpt := p1.NewMPT()
-	for i := 0; i < insertNumber; i++ {
-		key := generateRandomString()
-		value := generateRandomString()
-		mpt.Insert(key, value)
-	}
-	return mpt
-}
-
 func Canonical(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, SBC.ShowCanonical())
 }
@@ -397,7 +395,11 @@ func Store(w http.ResponseWriter, r *http.Request) {
 	newData.PublicKey = data.PublicKey
 	newData.DataHash = data.DataHash
 	mpt.Insert(newData.DataHash, string(body))
-
+	_, err = clientBalanceMPt.Get(newData.PublicKey)
+	if err != nil {
+		clientBalanceMPt.Insert(newData.PublicKey, "100")
+	}
+	//TODO Miners have a mpt with the balcnce of everyone. The block mpt will include all transactions my their hash. The miners can check transactions to see if they are applied. Client sends transaction to all miners.
 	blockHash, blockHeight := generateNewBlock(newData.DataHash, string(body))
 	jsonResp := store_resp{blockHash, blockHeight}
 	result, _ := json.Marshal(jsonResp)

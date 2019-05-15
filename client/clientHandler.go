@@ -20,6 +20,7 @@ type ClientInfo struct {
 	publicKey   *rsa.PublicKey
 	aesSecret   []byte
 	Client_data map[string]MapData
+	Gcoin       float32
 }
 
 type Client_encoded struct {
@@ -27,6 +28,7 @@ type Client_encoded struct {
 	PublicKey   []byte             `json:"publicKey"`
 	AesSecret   []byte             `json:"AesSecret"`
 	Client_data map[string]MapData `json:"data"`
+	Gcoin       float32            `json:"Gcoin"`
 }
 
 type MapData struct {
@@ -95,6 +97,7 @@ func LoadUserData() ClientInfo {
 		clientData.publicKey = BytesToPublicKey(data.PublicKey)
 		clientData.Client_data = data.Client_data
 		clientData.aesSecret = data.AesSecret
+		clientData.Gcoin = data.Gcoin
 
 		fmt.Println("Loaded existing key pair, and client data")
 
@@ -110,6 +113,7 @@ func LoadUserData() ClientInfo {
 		fmt.Println(key)
 		clientData.aesSecret = key
 		clientData.Client_data = make(map[string]MapData)
+		clientData.Gcoin = 1000.00
 		writeClientInfoToFile(&clientData)
 
 	}
@@ -272,6 +276,7 @@ func writeClientInfoToFile(clientData *ClientInfo) {
 		PublicKey:   PublicKeyToBytes(clientData.publicKey),
 		AesSecret:   clientData.aesSecret,
 		Client_data: clientData.Client_data,
+		Gcoin:       clientData.Gcoin,
 	}
 
 	clientInfoJson, _ := json.Marshal(encodedB)
