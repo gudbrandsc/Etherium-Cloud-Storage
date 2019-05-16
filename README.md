@@ -112,3 +112,6 @@ Since the blockchain will be storing the actual data on the blockchain the price
 
 ## Final comments
 Overall I would say that the dapp works as I hoped, but I still have a few issues in my transactions/balances that I have to solve. The main issue is that different miners apply transactions that are not part of cononical chain, which effect the balances of the users. Other than this the program should work without any problems. 
+
+## Demo 
+https://www.youtube.com/watch?v=QvukpLFgbto
