@@ -76,6 +76,7 @@ Since the blockchain will be storing the actual data on the blockchain the price
    "DataHash"  :  "String",
    "PublicKey" :  "String",
    "Signature" :  "String"
+   "MinersPublicKey" :  "String"
    }
 }
 ```
@@ -88,6 +89,7 @@ Since the blockchain will be storing the actual data on the blockchain the price
   {
    "Amount": "Float",
    "publicKey": "String",
+   "messageHash": "String",
    "signature": "String"
   }
 ```
@@ -107,3 +109,6 @@ Since the blockchain will be storing the actual data on the blockchain the price
 | 05/16/19      | <ul><li> [x] Finished demo video, and project description.  </li></ul>      |
 
 **NOTE:** Some of these dates might seem random, but they are based on my current calendar and the days I have allocated to work on this project. This is a sunny day scenario where all goes well during the development so the final timeline might look a bit different.
+
+## Final comments
+Overall I would say that the dapp works as I hoped, but I still have a few issues in my transactions/balances that I have to solve. The main issue is that different miners apply transactions that are not part of cononical chain, which effect the balances of the users. Other than this the program should work without any problems. 
