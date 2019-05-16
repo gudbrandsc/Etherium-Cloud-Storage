@@ -104,6 +104,6 @@ Since the blockchain will be storing the actual data on the blockchain the price
 | 05/01/19      | <ul><li> [x] Finish Midpoint milestone   <ul><li>[x] Define API</li><li>[x] Define TX fee</li><li>[x] Define Data integrity</li><li>[x] Define Application architecture</li><li>[x] Finish project timeline </li></ul></li><li> [x] Implement basic application UI </li><li> [x] Client key pair generator </li><li> [x] Client storing and retrieval functions </li></ul>      |
 | 05/05/19      | <ul><li> [x] Implement storing API </li><li> [x] Implement retrieval API </li><li> [ ] Implement TX API </li> </ul> |
 | 05/10/19      | <ul><li> [ ] Finish testing and bug fixing </li></ul>      |
-| 05/16/19      | Finished demo video, and project description.      |
+| 05/16/19      | <ul><li> [x] Finished demo video, and project description.  </li></ul>      |
 
 **NOTE:** Some of these dates might seem random, but they are based on my current calendar and the days I have allocated to work on this project. This is a sunny day scenario where all goes well during the development so the final timeline might look a bit different.
