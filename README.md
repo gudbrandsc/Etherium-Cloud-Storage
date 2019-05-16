@@ -71,13 +71,14 @@ Since the blockchain will be storing the actual data on the blockchain the price
   ```json
 {
 "TXfee": "integer",
+"MinersPublicKey" :  "String",
 "data":{
    "EncryptedByteString": "String",
    "DataHash"  :  "String",
    "PublicKey" :  "String",
    "Signature" :  "String",
-   "MinersPublicKey" :  "String"
    }
+
 }
 ```
 **Description:** Get method that allows a client to retrieve a file stored on the BlockChain  
