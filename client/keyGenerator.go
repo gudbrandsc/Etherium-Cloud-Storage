@@ -135,6 +135,25 @@ func VerifySignature(signature []byte, priv *rsa.PrivateKey, message []byte) boo
 
 	// signature is a valid signature of message from the public key.
 }
+func VerifySignatureWithPub(signature []byte, pub *rsa.PublicKey, message []byte) bool {
+
+	// Only small messages can be signed directly; thus the hash of a
+	// message, rather than the message itself, is signed. This requires
+	// that the hash function be collision resistant. SHA-256 is the
+	// least-strong hash function that should be used for this at the time
+	// of writing (2016).
+	hashed := sha256.Sum256(message)
+
+	err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, hashed[:], signature)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from verification: %s\n", err)
+		return false
+	}
+	return true
+
+	// signature is a valid signature of message from the public key.
+}
 
 // DecryptWithPrivateKey decrypts data with private key
 func DecryptWithPrivateKey(ciphertext []byte, priv *rsa.PrivateKey) []byte {

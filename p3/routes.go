@@ -60,4 +60,28 @@ var routes = Routes{
 		"/retrieve/{fileHash}/{blockHeight}/{blockHash}",
 		Retrieve,
 	},
+	Route{
+		"payment",
+		"POST",
+		"/payment",
+		PaymentTransaction,
+	},
+	Route{
+		"balance",
+		"POST",
+		"/balance",
+		Balance,
+	},
+	Route{
+		"showallbalance",
+		"GET",
+		"/showallbalances",
+		ShowAllBalance,
+	},
+	Route{
+		"updateMinersList",
+		"GET",
+		"/getallpeers",
+		GetAllPeers,
+	},
 }

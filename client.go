@@ -1,10 +1,14 @@
 package main
 
 import (
+	"./p3/data"
 	"bufio"
 	"cs686-blockchain-p3-gudbrandsc/client"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -21,7 +25,9 @@ func main() {
 	if client.VerifySignature(signature, clientData.GetPrivateKey(), text) {
 		fmt.Println("Valid")
 	}
-
+	id, _ := strconv.ParseInt(os.Args[1], 10, 32)
+	Peers := data.NewPeerList( /*Register()*/ int32(id), 32) // Uses port number as ID since TA server is down
+	updatePeerList(Peers)
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("Welcome, to GudbrandCoin")
 	fmt.Println("---------------------")
@@ -43,6 +49,8 @@ func main() {
 			fmt.Println("| listlocal \t\t\t|\t Show all local files \t\t\t\t\t|")
 			fmt.Println("| store <filename path> |\t Store a file on the BlockChain \t\t|")
 			fmt.Println("| get   <filename>\t\t|\t Retrieve a file from the BlockChain \t|")
+			fmt.Println("| balance   \t\t\t|\t Show your balance \t\t\t\t\t\t|")
+			fmt.Println("| updateminers   \t\t|\t Update list of available miners \t\t|")
 			fmt.Println("---------------------------------------------------------------------")
 
 		} else if strings.Compare("liststored", textArray[0]) == 0 {
@@ -51,16 +59,33 @@ func main() {
 			client.ListAllLocalFiles()
 		} else if strings.Compare("store", textArray[0]) == 0 {
 			storeFile(textArray, clientData)
+		} else if strings.Compare("updateminers", textArray[0]) == 0 {
+			updatePeerList(Peers)
 		} else if strings.Compare("get", textArray[0]) == 0 {
-			if len(textArray) != 2 {
+			if len(textArray) != 3 {
 				fmt.Print("Invalid command please use format: get <filename>\n")
 			} else {
-				client.RetrieveFile(textArray[1], &clientData)
+				client.RetrieveFile(getRandomPeer(textArray[2]), textArray[1], &clientData)
 			}
+		} else if strings.Compare("balance", textArray[0]) == 0 {
+			fmt.Println(" -------------------")
+			fmt.Print("|\t Balance: ")
+			fmt.Print(client.GetBalance(&clientData))
+			fmt.Println("\t|")
+			fmt.Println(" -------------------")
+
 		} else {
 			fmt.Println("Invalid command, type help for command info")
 		}
 	}
+}
+
+func getRandomPeer(v string) string {
+	if v == "s" {
+		return "http://localhost:6687"
+	}
+	return "http://localhost:6686"
+
 }
 
 func storeFile(textArray []string, clientData client.ClientInfo) {
@@ -73,4 +98,20 @@ func storeFile(textArray []string, clientData client.ClientInfo) {
 			fmt.Println("File does not exit")
 		}
 	}
+}
+
+func updatePeerList(peers data.PeerList) {
+	url := "http://localhost:6686/getallpeers"
+	resp, _ := http.Get(url)
+
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		peers.InjectPeerMapJson(string(bodyBytes), "http://localhost:"+os.Args[1])
+		peers.Add("http://localhost:6686", 10)
+		fmt.Println(peers.Show())
+	} else {
+		fmt.Println("unable to update get miners list")
+	}
+
 }

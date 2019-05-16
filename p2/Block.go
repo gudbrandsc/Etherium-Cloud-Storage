@@ -12,8 +12,9 @@ import (
 )
 
 type Block struct {
-	Header Header
-	Value  p1.MerklePatriciaTrie
+	Header       Header
+	Value        p1.MerklePatriciaTrie
+	Transactions p1.MerklePatriciaTrie
 }
 
 // Structure used inside the Block structure
@@ -28,17 +29,18 @@ type Header struct {
 
 //Structure used to create a JSON object.
 type Encoded_block struct {
-	Hash       string            `json:"hash"`
-	Timestamp  int64             `json:"timeStamp"`
-	Height     int32             `json:"height"`
-	ParentHash string            `json:"parentHash"`
-	Size       int32             `json:"size"`
-	Value      map[string]string `json:"mpt"`
-	Nonce      string            `json:"nonce"`
+	Hash         string            `json:"hash"`
+	Timestamp    int64             `json:"timeStamp"`
+	Height       int32             `json:"height"`
+	ParentHash   string            `json:"parentHash"`
+	Size         int32             `json:"size"`
+	Value        map[string]string `json:"mpt"`
+	Nonce        string            `json:"nonce"`
+	Transactions map[string]string `json:"transactions"`
 }
 
 // Initial a new block
-func Initial(height int32, parentHash string, mpt p1.MerklePatriciaTrie, nonce string) Block {
+func Initial(height int32, parentHash string, valueMpt p1.MerklePatriciaTrie, transactionMpt p1.MerklePatriciaTrie, nonce string) Block {
 	b := Block{} //Set values from param
 	header := Header{
 		Height:     height,
@@ -47,7 +49,8 @@ func Initial(height int32, parentHash string, mpt p1.MerklePatriciaTrie, nonce s
 		Nonce:      nonce,
 	}
 	b.Header = header
-	b.Value = mpt
+	b.Value = valueMpt
+	b.Transactions = transactionMpt
 
 	//Create byte array from MPT and get the size.
 	reqBodyBytes := new(bytes.Buffer)
@@ -55,7 +58,7 @@ func Initial(height int32, parentHash string, mpt p1.MerklePatriciaTrie, nonce s
 	b.Header.Size = int32(len(reqBodyBytes.Bytes()))
 
 	//Create block hash
-	hashStr := string(b.Header.Height) + string(b.Header.Timestamp) + b.Header.ParentHash + b.Value.Root + string(b.Header.Size)
+	hashStr := string(b.Header.Height) + string(b.Header.Timestamp) + b.Header.ParentHash + b.Transactions.Root + string(b.Header.Size)
 	sum := sha3.Sum256([]byte(hashStr))
 	b.Header.Hash = hex.EncodeToString(sum[:])
 	return b
@@ -85,9 +88,17 @@ func DecodeFromJson(jsonString string) Block {
 		mpt.Insert(k, v)
 	}
 
+	transactionMap := decoded.Transactions
+	transactionMpt := p1.NewMPT()
+
+	for k, v := range transactionMap {
+		transactionMpt.Insert(k, v)
+	}
+
 	block := Block{
-		Header: header,
-		Value:  mpt,
+		Header:       header,
+		Value:        mpt,
+		Transactions: transactionMpt,
 	}
 	return block
 }
@@ -96,16 +107,17 @@ func DecodeFromJson(jsonString string) Block {
 func (b *Block) EncodeToJSON() string {
 	//Get Json data from entry map in mpt
 	mptData := b.Value.EntryMap
-
+	transactionMpt := b.Transactions.EntryMap
 	//Create json string with block values
 	encodedB := &Encoded_block{
-		Hash:       b.Header.Hash,
-		Timestamp:  b.Header.Timestamp,
-		Height:     b.Header.Height,
-		ParentHash: b.Header.ParentHash,
-		Nonce:      b.Header.Nonce,
-		Size:       b.Header.Size,
-		Value:      mptData,
+		Hash:         b.Header.Hash,
+		Timestamp:    b.Header.Timestamp,
+		Height:       b.Header.Height,
+		ParentHash:   b.Header.ParentHash,
+		Nonce:        b.Header.Nonce,
+		Size:         b.Header.Size,
+		Value:        mptData,
+		Transactions: transactionMpt,
 	}
 	result, _ := json.Marshal(encodedB)
 	return string(result)

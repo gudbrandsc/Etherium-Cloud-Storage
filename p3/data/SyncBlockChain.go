@@ -68,11 +68,11 @@ func (sbc *SyncBlockChain) BlockChainToJson() (string, error) {
 }
 
 // Generate a new block
-func (sbc *SyncBlockChain) GenBlock(mpt p1.MerklePatriciaTrie, nonce string, parentHash string) p2.Block {
+func (sbc *SyncBlockChain) GenBlock(mpt p1.MerklePatriciaTrie, transactionMpt p1.MerklePatriciaTrie, nonce string, parentHash string) p2.Block {
 	sbc.mux.Lock()
 	defer sbc.mux.Unlock()
 	height := sbc.bc.Length
-	return p2.Initial(height+1, parentHash, mpt, nonce)
+	return p2.Initial(height+1, parentHash, mpt, transactionMpt, nonce)
 }
 
 // Return a string of the current BlockChain

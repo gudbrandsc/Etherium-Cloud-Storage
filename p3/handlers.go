@@ -21,24 +21,24 @@ import (
 	"time"
 )
 
-const charset = "abcdefghijklmnopqrstuvwxyz" +
-	"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
 var TA_SERVER = "http://localhost:6688"
 var REGISTER_SERVER = TA_SERVER + "/peer"
 var BC_DOWNLOAD_SERVER = TA_SERVER + "/upload"
 var SELF_ADDR = "http://localhost:" + os.Args[1]
 var FIRST_NODE_ADDR = "http://localhost:6686"
-var JSON_BLOCKCHAIN = "[{\"hash\": \"3ff3b4efe9177f705550231079c2459ba54a22d340a517e84ec5261a0d74ca48\", \"timeStamp\": 1234567890, \"height\": 1, \"parentHash\": \"genesis\", \"size\": 1174, \"mpt\": {\"hello\": \"world\", \"charles\": \"ge\"}}, {\"hash\": \"24cf2c336f02ccd526a03683b522bfca8c3c19aed8a1bed1bbc23c33cd8d1159\", \"timeStamp\": 1234567890, \"height\": 2, \"parentHash\": \"3ff3b4efe9177f705550231079c2459ba54a22d340a517e84ec5261a0d74ca48\", \"size\": 1231, \"mpt\": {\"hello\": \"world\", \"charles\": \"ge\"}}]"
+var JSON_BLOCKCHAIN = "[{\"hash\": \"3ff3b4efe9177f705550231079c2459ba54a22d340a517e84ec5261a0d74ca48\", \"timeStamp\": 1234567890, \"height\": 1, \"parentHash\": \"genesis\", \"size\": 1174, \"mpt\": {\"hello\": \"world\", \"charles\": \"ge\"}, \"transactions\": {}}, {\"hash\": \"24cf2c336f02ccd526a03683b522bfca8c3c19aed8a1bed1bbc23c33cd8d1159\", \"timeStamp\": 1234567890, \"height\": 2, \"parentHash\": \"3ff3b4efe9177f705550231079c2459ba54a22d340a517e84ec5261a0d74ca48\", \"size\": 1231, \"mpt\": {\"hello\": \"world\", \"charles\": \"ge\"}, \"transactions\": {}}]"
 
 var SBC data.SyncBlockChain
 var Peers data.PeerList
 var ifStarted bool
 var mpt p1.MerklePatriciaTrie
-var clientBalanceMPt p1.MerklePatriciaTrie
+var clientBalanceMap map[string]int32
+var pendingTransaction map[string]string
 var transactionMpt p1.MerklePatriciaTrie
 var privateKey *rsa.PrivateKey
 var publicKey *rsa.PublicKey
+var highestblockTransaction int32
+var highestblockTransactionHash string
 
 type StoreFileInfo struct {
 	CiphertextData []byte
@@ -55,8 +55,9 @@ type StoreFileInfo_encoded struct {
 }
 
 type file_retrieval_resp struct {
-	TXfee int32                 `json:"TXfee"`
-	Data  StoreFileInfo_encoded `json:"Data"`
+	TXfee    int32                 `json:"TXfee"`
+	MinerKey string                `json:"MinerPublicKey"`
+	Data     StoreFileInfo_encoded `json:"Data"`
 }
 
 type store_resp struct {
@@ -64,17 +65,39 @@ type store_resp struct {
 	BlockHeight int32  `json:"BlockHeight"`
 }
 
+type transaction_message_encoded struct {
+	From      string `json:"From"`
+	To        string `json:"To"`
+	Amount    int32  `json:"Amount"`
+	Timestamp string `json:"timeStamp"`
+}
+
+type transaction_Signature_encoded struct {
+	Signed  []byte                      `json:"Signed"`
+	Message transaction_message_encoded `json:"Message"`
+}
+
+type transaction_encoded struct {
+	Key               string                        `json:"Key"`
+	MessageHash       []byte                        `json:"MessageHash"`
+	MessageHashString string                        `json:"MessageHashString"`
+	Signature         transaction_Signature_encoded `json:"Signature"`
+	Hops              int32                         `json:"Hops"`
+}
+
 //Initialize all variables for the server
 func init() {
 	SBC = data.NewBlockChain()
 	id, _ := strconv.ParseInt(os.Args[1], 10, 32)
 	Peers = data.NewPeerList( /*Register()*/ int32(id), 32) // Uses port number as ID since TA server is down
+	privateKey, publicKey = client.GenerateKeyPair()
 	ifStarted = false
 	mpt.Initial()
-	clientBalanceMPt.Initial()
+	clientBalanceMap = make(map[string]int32)
+	pendingTransaction = make(map[string]string)
 	transactionMpt.Initial()
-	privateKey, publicKey = client.GenerateKeyPair()
-
+	clientBalanceMap[string(client.PublicKeyToBytes(publicKey))] = 1000
+	highestblockTransaction = 0
 }
 
 // Register ID, download BlockChain, start HeartBeat
@@ -83,13 +106,16 @@ func Start(w http.ResponseWriter, r *http.Request) {
 	if os.Args[2] == "yes" {
 		fmt.Println("Create BlockChain from json ")
 		SBC.UpdateEntireBlockChain(JSON_BLOCKCHAIN)
+		highestblockTransaction = SBC.GetLatestBlocks()[0].GetHeight()
+		highestblockTransactionHash = SBC.GetLatestBlocks()[0].GetHash()
 	} else {
 		fmt.Println("Download BlockChain from first node..")
 		Download()
 	}
 	ifStarted = true
 	go StartHeartBeat()
-	//go StartTryingNonces()
+	go CreateBlockWithTransactions()
+
 	fmt.Fprintf(w, "Node started")
 }
 
@@ -132,6 +158,8 @@ func Download() {
 	}
 	responseString := string(responseData)
 	SBC.UpdateEntireBlockChain(responseString)
+	transactionMpt = SBC.GetLatestBlocks()[0].Transactions
+	readAllUsersFromTransactionHistory()
 }
 
 // Upload BlockChain to whoever called this method, return jsonStr
@@ -193,21 +221,101 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 				if !SBC.CheckParentHash(newBlock) { // Check if you have the parent block if not ask for it from a peer
 					AskForBlock(newBlock.Header.Height-1, newBlock.Header.ParentHash)
 				}
-				// Add new block to the chain
-				SBC.Insert(p2.DecodeFromJson(rData.BlockJson))
+				if verifyAllBlockTransactions(newBlock.Transactions) {
+					if highestblockTransaction < newBlock.Header.Height {
+						fmt.Println("Exstend my fork")
+						//Check if the block extends my block
+						if newBlock.Header.ParentHash == highestblockTransactionHash {
+							highestblockTransaction = newBlock.Header.Height
+							highestblockTransactionHash = newBlock.Header.Hash
+							RemoveConfirmedTransactionsFromPending(newBlock.Transactions)
+						} else {
+							fmt.Println("Update my transaction state")
+
+							if (newBlock.Header.Height - highestblockTransaction) > 4 {
+								highestblockTransaction = newBlock.Header.Height
+								highestblockTransactionHash = newBlock.Header.Hash
+								transactionMpt.Initial()
+								clientBalanceMap = make(map[string]int32)
+								//Remove pending transactions that are confirmed in the new longest chain
+								for key, _ := range newBlock.Transactions.GetEntryMap() {
+									if _, ok := pendingTransaction[key]; ok {
+										delete(pendingTransaction, key)
+									}
+								}
+								RemoveConfirmedTransactionsFromPending(newBlock.Transactions)
+							}
+						}
+					}
+					// All transactions are ok, add the new block to the chain
+					SBC.Insert(p2.DecodeFromJson(rData.BlockJson))
+				}
+				// Check if heartbeat should be forwarded
+				if rData.Hops > 0 {
+					hops := rData.Hops - 1
+					forwardData := data.HeartBeatData{rData.IfNewBlock, rData.Id, rData.BlockJson, rData.PeerMapJson, hops, rData.Addr}
+					ForwardHeartBeat(forwardData)
+				}
 			}
 		}
-		// Check if heartbeat should be forwarded
-		if rData.Hops > 0 {
-			hops := rData.Hops - 1
-			forwardData := data.HeartBeatData{rData.IfNewBlock, rData.Id, rData.BlockJson, rData.PeerMapJson, hops, rData.Addr}
-			ForwardHeartBeat(forwardData)
-		}
+
 	}
 	w.WriteHeader(http.StatusOK)
 }
+
+func RemoveConfirmedTransactionsFromPending(blockTransaction p1.MerklePatriciaTrie) {
+	for key, value := range blockTransaction.GetEntryMap() {
+		if _, ok := transactionMpt.EntryMap[key]; !ok {
+			transactionMpt.Insert(key, value)
+
+			transactionEncoded := transaction_encoded{}
+			json.Unmarshal([]byte(value), &transactionEncoded)
+			from := transactionEncoded.Signature.Message.From
+			to := transactionEncoded.Signature.Message.To
+			amount := transactionEncoded.Signature.Message.Amount
+
+			if _, ok := clientBalanceMap[from]; !ok {
+				clientBalanceMap[from] = 1000 - amount
+			} else {
+				clientBalanceMap[from] = clientBalanceMap[from] - amount
+			}
+
+			if _, ok := clientBalanceMap[to]; !ok {
+				clientBalanceMap[to] = 1000 + amount
+			} else {
+				clientBalanceMap[to] = clientBalanceMap[to] - amount
+			}
+
+			// Remove transaction from pending transaction
+			if _, ok := pendingTransaction[key]; ok {
+				delete(pendingTransaction, key)
+			}
+		}
+	}
+}
+
+func verifyAllBlockTransactions(transactions p1.MerklePatriciaTrie) bool {
+	valid := true
+	if transactions.Root == transactionMpt.Root {
+		return true
+	}
+
+	for _, value := range transactions.GetEntryMap() {
+		transactionEncoded := transaction_encoded{}
+		json.Unmarshal([]byte(value), &transactionEncoded)
+		transactionSignature := transactionEncoded.Signature
+		key := transactionEncoded.Key
+		messageHash := transactionEncoded.MessageHash
+		if !VerifyTransactionSignature(transactionSignature, key, messageHash) {
+			valid = false
+			break
+		}
+	}
+	return valid
+}
+
 func CheckPowForNewBlock(block p2.Block) bool {
-	hashStr := block.Header.ParentHash + block.Header.Nonce + block.Value.Root
+	hashStr := block.Header.ParentHash + block.Header.Nonce + block.Transactions.Root + block.Value.Root
 	sum := sha3.Sum256([]byte(hashStr))
 	powString := hex.EncodeToString(sum[:])
 	return checkPowResult(powString)
@@ -292,59 +400,49 @@ func StartHeartBeat() {
 	}
 }
 
-func StartTryingNonces() {
-	duration := time.Duration(4) * time.Second // Pause for 10 seconds
-	time.Sleep(duration)
-	fmt.Println("Start nonce")
-	//Get latest block
-	latestBlockList := SBC.GetLatestBlocks()
-	blockListLength := len(latestBlockList) - 1
-	randomVal := 0
-	currentChainLength := SBC.GetChainLength()
-
-	if blockListLength > 0 {
-		randomVal = rand.Intn(int(blockListLength)-0) + 0
-	}
-
-	parentBlock := latestBlockList[randomVal]
-	powString := "9999999999"
-	correctNonce := ""
-	ifNewBlock := true
-	fmt.Println("find new block for : " + parentBlock.GetHash())
-
-	for !checkPowResult(powString) {
-		if currentChainLength != SBC.GetChainLength() {
-			ifNewBlock = false
-			break
-		} else {
-			nonce, err := randomHex()
-			if err == nil {
-				hashStr := parentBlock.Header.Hash + nonce + mpt.Root
-				sum := sha3.Sum256([]byte(hashStr))
-				powString = hex.EncodeToString(sum[:])
-				correctNonce = nonce
+//Add 10 pending transactions to your block, and remove them from pending transaction
+func addPendingTransactions() {
+	count := 1
+	fmt.Println("Adding pending transactions")
+	if len(pendingTransaction) > 0 {
+		for key, value := range pendingTransaction {
+			if count >= 10 {
+				break
 			}
-		}
-	}
+			fmt.Println("-------------")
 
-	if ifNewBlock {
-		fmt.Println("Found pow send to all peers")
-		fmt.Println(powString)
-		newBlock := SBC.GenBlock(mpt, correctNonce, parentBlock.Header.Hash)
-		SBC.Insert(newBlock)
-		newBlockJson := newBlock.EncodeToJSON()
-		Peers.Rebalance() // Make sure to only send the correct amount of peers
-		peerMapJson, _ := Peers.PeerMapToJson()
-		heartBeatData := data.NewHeartBeatData(ifNewBlock, Peers.GetSelfId(), newBlockJson, peerMapJson, SELF_ADDR)
-		ForwardHeartBeat(heartBeatData)
-	} else {
-		fmt.Println("Someone solved pow before me")
+			fmt.Println(key)
+			fmt.Println(value)
+			fmt.Println("-------------")
+
+			transactionMpt.Insert(key, value)
+			transactionEncoded := transaction_encoded{}
+			json.Unmarshal([]byte(value), &transactionEncoded)
+			from := transactionEncoded.Signature.Message.From
+			to := transactionEncoded.Signature.Message.To
+			amount := transactionEncoded.Signature.Message.Amount
+
+			if _, ok := clientBalanceMap[from]; !ok {
+				clientBalanceMap[from] = 1000 - amount
+			} else {
+				clientBalanceMap[from] = clientBalanceMap[from] - amount
+			}
+
+			if _, ok := clientBalanceMap[to]; !ok {
+				clientBalanceMap[to] = 1000 + amount
+			} else {
+				clientBalanceMap[to] = clientBalanceMap[to] + amount
+			}
+
+			delete(pendingTransaction, key)
+			count++
+		}
 	}
 }
 
 // Check if the first 7 chars in the POW are 0's
 func checkPowResult(pow string) bool {
-	first7 := pow[0:3]
+	first7 := pow[0:4]
 	for _, char := range first7 {
 		if char != '0' {
 			return false
@@ -361,19 +459,6 @@ func randomHex() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
-}
-
-// Generate a random string of 10 bytes
-// src: https://www.calhoun.io/creating-random-strings-in-go/
-func generateRandomString() string {
-	var seededRand *rand.Rand = rand.New(
-		rand.NewSource(time.Now().UnixNano()))
-	b := make([]byte, 10)
-
-	for i := range b {
-		b[i] = charset[seededRand.Intn(len(charset))]
-	}
-	return string(b)
 }
 
 func Canonical(w http.ResponseWriter, r *http.Request) {
@@ -395,17 +480,14 @@ func Store(w http.ResponseWriter, r *http.Request) {
 	newData.PublicKey = data.PublicKey
 	newData.DataHash = data.DataHash
 	mpt.Insert(newData.DataHash, string(body))
-	_, err = clientBalanceMPt.Get(newData.PublicKey)
-	if err != nil {
-		clientBalanceMPt.Insert(newData.PublicKey, "100")
+	if _, ok := clientBalanceMap[newData.PublicKey]; !ok {
+		clientBalanceMap[newData.PublicKey] = 1000
 	}
-	//TODO Miners have a mpt with the balcnce of everyone. The block mpt will include all transactions my their hash. The miners can check transactions to see if they are applied. Client sends transaction to all miners.
-	blockHash, blockHeight := generateNewBlock(newData.DataHash, string(body))
+	blockHash, blockHeight := generateNewBlock()
 	jsonResp := store_resp{blockHash, blockHeight}
 	result, _ := json.Marshal(jsonResp)
 	fmt.Fprint(w, string(result))
 }
-
 func Retrieve(w http.ResponseWriter, r *http.Request) {
 	s := strings.Split(r.URL.Path, "/")
 	//val, err :=
@@ -416,7 +498,6 @@ func Retrieve(w http.ResponseWriter, r *http.Request) {
 	foundBlock, found := SBC.GetBlock(int32(blockHeight), blockHash)
 	if !found {
 		fmt.Println("Cant find block")
-
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -433,21 +514,67 @@ func Retrieve(w http.ResponseWriter, r *http.Request) {
 	minerResp := StoreFileInfo_encoded{}
 	json.Unmarshal([]byte(data), &minerResp)
 
-	b, err := json.Marshal(file_retrieval_resp{10, minerResp})
+	b, err := json.Marshal(file_retrieval_resp{10, string(client.PublicKeyToBytes(publicKey)), minerResp})
 
 	fmt.Fprint(w, string(b))
 }
 
-func generateNewBlock(key string, value string) (string, int32) {
-	latestBlockList := SBC.GetLatestBlocks()
-	blockListLength := len(latestBlockList) - 1
-	randomVal := 0
-
-	if blockListLength > 0 {
-		randomVal = rand.Intn(int(blockListLength)-0) + 0
+func PaymentTransaction(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
 	}
 
-	parentBlock := latestBlockList[randomVal]
+	transactionEncoded := transaction_encoded{}
+	json.Unmarshal([]byte(body), &transactionEncoded)
+	transactionSignature := transactionEncoded.Signature
+	key := transactionEncoded.Key
+	messageHash := transactionEncoded.MessageHash
+
+	if VerifyTransactionSignature(transactionSignature, key, messageHash) {
+		fmt.Println("Transaction was valid")
+		fmt.Println(len(pendingTransaction))
+		transactionEncoded.Hops = transactionEncoded.Hops - 1
+		value, _ := json.Marshal(transactionEncoded)
+
+		fmt.Println("Adding transaction with hash")
+		fmt.Println(hex.EncodeToString(messageHash[:]))
+		pendingTransaction[hex.EncodeToString(messageHash[:])] = string(value)
+
+		if transactionEncoded.Hops > 0 {
+			ForwardHeartTransaction(transactionEncoded)
+		}
+	} else {
+		fmt.Println("Invalid signature")
+	}
+}
+
+func ForwardHeartTransaction(transaction transaction_encoded) {
+	Peers.Rebalance()
+	for key, _ := range Peers.Copy() {
+		url := key + "/payment"
+		jsonString, _ := json.Marshal(transaction)
+		_, err := http.Post(url, "application/json", bytes.NewBuffer(jsonString))
+		if err != nil {
+			fmt.Print("Unable to forward payment")
+		}
+	}
+}
+
+func VerifyTransactionSignature(signature transaction_Signature_encoded, key string, hashmessage []byte) bool {
+	rsaKey := client.BytesToPublicKey([]byte(key))
+
+	if client.VerifySignatureWithPub(signature.Signed, rsaKey, hashmessage) {
+		return true
+
+	}
+	return false
+}
+
+func generateNewBlock() (string, int32) {
+	parentBlock, _ := SBC.GetBlock(highestblockTransaction, highestblockTransactionHash)
+	addPendingTransactions()
+
 	powString := "9999999999"
 	correctNonce := ""
 	fmt.Println("find new block for : " + parentBlock.GetHash())
@@ -455,17 +582,16 @@ func generateNewBlock(key string, value string) (string, int32) {
 	for !checkPowResult(powString) {
 		nonce, err := randomHex()
 		if err == nil {
-			hashStr := parentBlock.Header.Hash + nonce + mpt.Root
+			hashStr := parentBlock.Header.Hash + nonce + transactionMpt.Root + mpt.Root
 			sum := sha3.Sum256([]byte(hashStr))
 			powString = hex.EncodeToString(sum[:])
 			correctNonce = nonce
 		}
-
 	}
 
 	fmt.Println("Found pow send to all peers")
 	fmt.Println(powString)
-	newBlock := SBC.GenBlock(mpt, correctNonce, parentBlock.Header.Hash)
+	newBlock := SBC.GenBlock(mpt, transactionMpt, correctNonce, parentBlock.Header.Hash)
 	SBC.Insert(newBlock)
 	newBlockJson := newBlock.EncodeToJSON()
 	Peers.Rebalance() // Make sure to only send the correct amount of peers
@@ -475,4 +601,75 @@ func generateNewBlock(key string, value string) (string, int32) {
 	mpt.Initial()
 
 	return newBlock.GetHash(), newBlock.GetHeight()
+}
+
+func readAllUsersFromTransactionHistory() {
+	for _, value := range transactionMpt.GetEntryMap() {
+		transactionEncoded := transaction_encoded{}
+		json.Unmarshal([]byte(value), &transactionEncoded)
+		from := transactionEncoded.Signature.Message.From
+		to := transactionEncoded.Signature.Message.To
+		amount := transactionEncoded.Signature.Message.Amount
+
+		if _, ok := clientBalanceMap[from]; !ok {
+			clientBalanceMap[from] = 1000 - amount
+		} else {
+			clientBalanceMap[from] = clientBalanceMap[from] - amount
+		}
+
+		if _, ok := clientBalanceMap[to]; !ok {
+			clientBalanceMap[to] = 1000 + amount
+		} else {
+			clientBalanceMap[to] = clientBalanceMap[to] + amount
+		}
+	}
+}
+
+type balance_encoded struct {
+	Key     string `json:"Key"`
+	Balance int32  `json:"Balance"`
+}
+
+func Balance(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
+	user := balance_encoded{}
+
+	json.Unmarshal([]byte(body), &user)
+
+	userString := string(user.Key)
+
+	if _, ok := clientBalanceMap[userString]; !ok {
+		clientBalanceMap[userString] = 1000
+	}
+
+	respData := balance_encoded{userString, clientBalanceMap[userString]}
+	jsonString, _ := json.Marshal(respData)
+
+	fmt.Fprint(w, string(jsonString))
+}
+func ShowAllBalance(w http.ResponseWriter, r *http.Request) {
+	returnstring := "---- User Balances ----"
+	for key, value := range clientBalanceMap {
+		returnstring += key + " : " + strconv.FormatInt(int64(value), 10) + "\n"
+	}
+	fmt.Fprint(w, returnstring)
+}
+
+func CreateBlockWithTransactions() {
+	for true {
+		time.Sleep(10 * time.Second)
+		fmt.Println("try and create block with just transactions")
+		if len(pendingTransaction) != 0 {
+			fmt.Println("Creating block with transactions")
+			generateNewBlock()
+		}
+	}
+}
+
+func GetAllPeers(w http.ResponseWriter, r *http.Request) {
+	peerMapJson, _ := Peers.PeerMapToJson()
+	fmt.Fprint(w, peerMapJson)
 }
