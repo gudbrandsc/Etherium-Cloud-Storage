@@ -76,6 +76,7 @@ Since the blockchain will be storing the actual data on the blockchain the price
    "DataHash"  :  "String",
    "PublicKey" :  "String",
    "Signature" :  "String"
+   "MinersPublicKey" :  "String"
    }
 }
 ```
@@ -88,6 +89,7 @@ Since the blockchain will be storing the actual data on the blockchain the price
   {
    "Amount": "Float",
    "publicKey": "String",
+   "messageHash": "String",
    "signature": "String"
   }
 ```
@@ -100,10 +102,13 @@ Since the blockchain will be storing the actual data on the blockchain the price
 | Date        | Milestone      
 | ------------- |:-------------|
 | 04/17/19      | <ul><li> [x] Finish project proposal.</li></ul>  |
-| 04/24/19      | <ul><li> [x] Research exisitng DFS, and their architecture/implimentation </li><li> [ ] Implement basic application UI </li></ul>      | 
+| 04/24/19      | <ul><li> [x] Research exisitng DFS, and their architecture/implimentation </li><li> [x] Implement basic application UI </li></ul>      | 
 | 05/01/19      | <ul><li> [x] Finish Midpoint milestone   <ul><li>[x] Define API</li><li>[x] Define TX fee</li><li>[x] Define Data integrity</li><li>[x] Define Application architecture</li><li>[x] Finish project timeline </li></ul></li><li> [x] Implement basic application UI </li><li> [x] Client key pair generator </li><li> [x] Client storing and retrieval functions </li></ul>      |
-| 05/05/19      | <ul><li> [x] Implement storing API </li><li> [x] Implement retrieval API </li><li> [ ] Implement TX API </li> </ul> |
+| 05/05/19      | <ul><li> [x] Implement storing API </li><li> [x] Implement retrieval API </li><li> [x] Implement TX API </li> </ul> |
 | 05/10/19      | <ul><li> [ ] Finish testing and bug fixing </li></ul>      |
-| 05/16/19      | Finished demo video, and project description.      |
+| 05/16/19      | <ul><li> [x] Finished demo video, and project description.  </li></ul>      |
 
 **NOTE:** Some of these dates might seem random, but they are based on my current calendar and the days I have allocated to work on this project. This is a sunny day scenario where all goes well during the development so the final timeline might look a bit different.
+
+## Final comments
+Overall I would say that the dapp works as I hoped, but I still have a few issues in my transactions/balances that I have to solve. The main issue is that different miners apply transactions that are not part of cononical chain, which effect the balances of the users. Other than this the program should work without any problems. 
