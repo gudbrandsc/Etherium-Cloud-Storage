@@ -75,7 +75,7 @@ Since the blockchain will be storing the actual data on the blockchain the price
    "EncryptedByteString": "String",
    "DataHash"  :  "String",
    "PublicKey" :  "String",
-   "Signature" :  "String"
+   "Signature" :  "String",
    "MinersPublicKey" :  "String"
    }
 }
